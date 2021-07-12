@@ -93,7 +93,7 @@ const (
 
 	releaseDelayAfterSnapshot = 30 * time.Second
 
-	// maxPendingRevokes is the maximum number of outstanding expired lease revocations.
+	// maxPendingRevokes 是未完成的过期租约撤销的最大数量。
 	maxPendingRevokes = 16
 
 	recommendedMaxRequestBytes = 10 * 1024 * 1024
@@ -269,7 +269,7 @@ type EtcdServer struct {
 	// compactor is used to auto-compact the KV.
 	compactor v3compactor.Compactor
 
-	// peerRt used to send requests (version, lease) to peers.
+	// peerRt 用于向对等方发送请求（版本、租约）。
 	peerRt   http.RoundTripper
 	reqIDGen *idutil.Generator
 
@@ -294,8 +294,7 @@ type EtcdServer struct {
 	*AccessController
 }
 
-// NewServer creates a new EtcdServer from the supplied configuration. The
-// configuration is considered static for the lifetime of the EtcdServer.
+// NewServer 从提供的配置创建一个新的 EtcdServer。在 EtcdServer 的生命周期内，配置被认为是静态的。
 func NewServer(cfg config.ServerConfig) (srv *EtcdServer, err error) {
 	st := v2store.New(StoreClusterPrefix, StoreKeysPrefix)
 
@@ -538,6 +537,7 @@ func NewServer(cfg config.ServerConfig) (srv *EtcdServer, err error) {
 
 	// always recover lessor before kv. When we recover the mvcc.KV it will reattach keys to its leases.
 	// If we recover mvcc.KV first, it will attach the keys to the wrong lessor before it recovers.
+	// 开始回收租约
 	srv.lessor = lease.NewLessor(
 		srv.Logger(),
 		srv.be,
@@ -559,6 +559,7 @@ func NewServer(cfg config.ServerConfig) (srv *EtcdServer, err error) {
 		cfg.Logger.Warn("failed to create token provider", zap.Error(err))
 		return nil, err
 	}
+	//
 	srv.kv = mvcc.New(srv.Logger(), srv.be, srv.lessor, srv.consistIndex, mvcc.StoreConfig{CompactionBatchLimit: cfg.CompactionBatchLimit})
 	kvindex := srv.consistIndex.ConsistentIndex()
 	srv.lg.Debug("restore consistentIndex",
@@ -733,6 +734,7 @@ func (s *EtcdServer) Start() {
 // start prepares and starts server in a new goroutine. It is no longer safe to
 // modify a server's fields after it has been sent to Start.
 // This function is just used for testing.
+// EtcdServer 启动时会有一个 run goroutine
 func (s *EtcdServer) start() {
 	lg := s.Logger()
 
@@ -1058,9 +1060,10 @@ func (s *EtcdServer) run() {
 		case ap := <-s.r.apply():
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
 			sched.Schedule(f)
-		case leases := <-expiredLeaseC:
+		case leases := <-expiredLeaseC: //监听过期的租约
 			s.GoAttach(func() {
 				// Increases throughput of expired leases deletion process through parallelization
+				// 这里加了一层限速
 				c := make(chan struct{}, maxPendingRevokes)
 				for _, lease := range leases {
 					select {
@@ -1069,8 +1072,9 @@ func (s *EtcdServer) run() {
 						return
 					}
 					lid := lease.ID
-					s.GoAttach(func() {
+					s.GoAttach(func() { //创建协程，并发调用
 						ctx := s.authStore.WithRoot(s.ctx)
+						//开始执行租约撤销
 						_, lerr := s.LeaseRevoke(ctx, &pb.LeaseRevokeRequest{ID: int64(lid)})
 						if lerr == nil {
 							leaseExpired.Inc()
@@ -2426,6 +2430,7 @@ func (s *EtcdServer) monitorDowngrade() {
 	}
 }
 
+//解析错误类型，并转换为自定义的 error
 func (s *EtcdServer) parseProposeCtxErr(err error, start time.Time) error {
 	switch err {
 	case context.Canceled:

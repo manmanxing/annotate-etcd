@@ -28,14 +28,11 @@ const (
 	defaultListElementLength = 64
 )
 
-// Wait is an interface that provides the ability to wait and trigger events that
-// are associated with IDs.
+// Wait 是一个接口，提供等待和触发与 ID 关联的事件的能力。
 type Wait interface {
-	// Register waits returns a chan that waits on the given ID.
-	// The chan will be triggered when Trigger is called with
-	// the same ID.
+	// Register waits 返回一个等待给定 ID 的 chan。当使用相同 ID 调用 Trigger 时，将触发 chan。
 	Register(id uint64) <-chan interface{}
-	// Trigger triggers the waiting chans with the given ID.
+	// Trigger 触发具有给定 ID 的等待通道。
 	Trigger(id uint64, x interface{})
 	IsRegistered(id uint64) bool
 }

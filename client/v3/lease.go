@@ -211,8 +211,11 @@ func NewLeaseFromLeaseClient(remote pb.LeaseClient, c *Client, keepAliveTimeout 
 	return l
 }
 
+//客户端-租约申请
+//todo ttl 默认是多少
 func (l *lessor) Grant(ctx context.Context, ttl int64) (*LeaseGrantResponse, error) {
 	r := &pb.LeaseGrantRequest{TTL: ttl}
+	//请求 etcd server 发起租约申请
 	resp, err := l.remote.LeaseGrant(ctx, r, l.callOpts...)
 	if err == nil {
 		gresp := &LeaseGrantResponse{

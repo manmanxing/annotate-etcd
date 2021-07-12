@@ -38,11 +38,9 @@ import (
 )
 
 const (
-	// In the health case, there might be a small gap (10s of entries) between
-	// the applied index and committed index.
-	// However, if the committed entries are very heavy to apply, the gap might grow.
-	// We should stop accepting new proposals if the gap growing to a certain point.
-	maxGapBetweenApplyAndCommitIndex = 5000
+	//在服务健康情况下，应用的索引和提交的索引之间可能存在小的差距（10 个条目）。
+	//但是，如果提交的条目非常繁重，则差距可能会扩大。如果差距扩大到一定程度，我们应该停止接受新的提案。
+	maxGapBetweenApplyAndCommitIndex = 5000 //最大 gap 值
 	traceThreshold                   = 100 * time.Millisecond
 	readIndexRetryTime               = 500 * time.Millisecond
 )
@@ -56,19 +54,15 @@ type RaftKV interface {
 }
 
 type Lessor interface {
-	// LeaseGrant sends LeaseGrant request to raft and apply it after committed.
+	//创建租约
 	LeaseGrant(ctx context.Context, r *pb.LeaseGrantRequest) (*pb.LeaseGrantResponse, error)
-	// LeaseRevoke sends LeaseRevoke request to raft and apply it after committed.
+	//撤销一个租约
 	LeaseRevoke(ctx context.Context, r *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error)
-
-	// LeaseRenew renews the lease with given ID. The renewed TTL is returned. Or an error
-	// is returned.
+	//用于维持租约
 	LeaseRenew(ctx context.Context, id lease.LeaseID) (int64, error)
-
-	// LeaseTimeToLive retrieves lease information.
+	//获取租约信息
 	LeaseTimeToLive(ctx context.Context, r *pb.LeaseTimeToLiveRequest) (*pb.LeaseTimeToLiveResponse, error)
-
-	// LeaseLeases lists all leases.
+	//列出所有的租约
 	LeaseLeases(ctx context.Context, r *pb.LeaseLeasesRequest) (*pb.LeaseLeasesResponse, error)
 }
 
@@ -258,12 +252,15 @@ func (s *EtcdServer) Compact(ctx context.Context, r *pb.CompactionRequest) (*pb.
 	return resp, nil
 }
 
+//根据给定的 ID和TTL 创建租约
+//最终会调用到 func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult
 func (s *EtcdServer) LeaseGrant(ctx context.Context, r *pb.LeaseGrantRequest) (*pb.LeaseGrantResponse, error) {
-	// no id given? choose one
+	// 如果给定的租约ID是0，那么程序会自己生成一个唯一的ID
 	for r.ID == int64(lease.NoLease) {
-		// only use positive int64 id's
+		//只使用正的 int64 id
 		r.ID = int64(s.reqIDGen.Next() & ((1 << 63) - 1))
 	}
+	//然后走 raft 协议
 	resp, err := s.raftRequestOnce(ctx, pb.InternalRaftRequest{LeaseGrant: r})
 	if err != nil {
 		return nil, err
@@ -271,6 +268,7 @@ func (s *EtcdServer) LeaseGrant(ctx context.Context, r *pb.LeaseGrantRequest) (*
 	return resp.(*pb.LeaseGrantResponse), nil
 }
 
+//租约撤销
 func (s *EtcdServer) LeaseRevoke(ctx context.Context, r *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error) {
 	resp, err := s.raftRequestOnce(ctx, pb.InternalRaftRequest{LeaseRevoke: r})
 	if err != nil {
@@ -279,11 +277,15 @@ func (s *EtcdServer) LeaseRevoke(ctx context.Context, r *pb.LeaseRevokeRequest) 
 	return resp.(*pb.LeaseRevokeResponse), nil
 }
 
+//续租
 func (s *EtcdServer) LeaseRenew(ctx context.Context, id lease.LeaseID) (int64, error) {
+	//调用 Renew 续约 指定的租约ID
+	//注意：这里是先续约本机(leader)的租约，leader的其他节点会通过 http 请求的方式续约
 	ttl, err := s.lessor.Renew(id)
 	if err == nil { // already requested to primary lessor(leader)
 		return ttl, nil
 	}
+	//如果本机不是leader
 	if err != lease.ErrNotPrimary {
 		return -1, err
 	}
@@ -291,14 +293,17 @@ func (s *EtcdServer) LeaseRenew(ctx context.Context, id lease.LeaseID) (int64, e
 	cctx, cancel := context.WithTimeout(ctx, s.Cfg.ReqTimeout())
 	defer cancel()
 
-	// renewals don't go through raft; forward to leader manually
+	// 然后判断当前是否有 leader, 如果没有的话，那么就 waitLeader 等待 leader 被选举出来
+	// 如果还是超时的话，那么报错直接返回 error.
 	for cctx.Err() == nil && err != nil {
 		leader, lerr := s.waitLeader(cctx)
 		if lerr != nil {
 			return -1, lerr
 		}
+		//for 循环leader的节点
 		for _, url := range leader.PeerURLs {
 			lurl := url + leasehttp.LeasePrefix
+			//http 请求节点续约
 			ttl, err = leasehttp.RenewHTTP(cctx, id, lurl, s.peerRt)
 			if err == nil || err == lease.ErrLeaseNotFound {
 				return ttl, err
@@ -373,7 +378,7 @@ func (s *EtcdServer) LeaseLeases(ctx context.Context, r *pb.LeaseLeasesRequest) 
 func (s *EtcdServer) waitLeader(ctx context.Context) (*membership.Member, error) {
 	leader := s.cluster.Member(s.Leader())
 	for leader == nil {
-		// wait an election
+		// 等待选举
 		dur := time.Duration(s.Cfg.ElectionTicks) * time.Duration(s.Cfg.TickMs) * time.Millisecond
 		select {
 		case <-time.After(dur):
@@ -384,6 +389,7 @@ func (s *EtcdServer) waitLeader(ctx context.Context) (*membership.Member, error)
 			return nil, ErrNoLeader
 		}
 	}
+	//如果超时了还是没选举出 leader 或者 raft 集群节点数为 0 ，返回报错
 	if leader == nil || len(leader.PeerURLs) == 0 {
 		return nil, ErrNoLeader
 	}
@@ -592,6 +598,7 @@ func (s *EtcdServer) RoleDelete(ctx context.Context, r *pb.AuthRoleDeleteRequest
 }
 
 func (s *EtcdServer) raftRequestOnce(ctx context.Context, r pb.InternalRaftRequest) (proto.Message, error) {
+	//请求 raft，并获取结果，注意result 也有一个 err
 	result, err := s.processInternalRaftRequestOnce(ctx, r)
 	if err != nil {
 		return nil, err
@@ -604,6 +611,7 @@ func (s *EtcdServer) raftRequestOnce(ctx context.Context, r pb.InternalRaftReque
 		// The trace object is created in apply. Here reset the start time to trace
 		// the raft request time by the difference between the request start time
 		// and apply start time
+		//增加一些链路追踪信息
 		result.trace.SetStartTime(startTime)
 		result.trace.InsertStep(0, applyStart, "process raft request")
 		result.trace.LogIfLong(traceThreshold)
@@ -640,18 +648,22 @@ func (s *EtcdServer) doSerialize(ctx context.Context, chk func(*auth.AuthInfo) e
 	return nil
 }
 
+
+//走raft协议，并返回事件结果
 func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.InternalRaftRequest) (*applyResult, error) {
 	ai := s.getAppliedIndex()
 	ci := s.getCommittedIndex()
+	//这里会对请求次数做限制，防止 gap 超标
 	if ci > ai+maxGapBetweenApplyAndCommitIndex {
 		return nil, ErrTooManyRequests
 	}
-
+	//生成请求头
 	r.Header = &pb.RequestHeader{
 		ID: s.reqIDGen.Next(),
 	}
 
 	// check authinfo if it is not InternalAuthenticateRequest
+	// 校验权限信息
 	if r.Authenticate == nil {
 		authInfo, err := s.AuthInfoFromCtx(ctx)
 		if err != nil {
@@ -662,43 +674,51 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 			r.Header.AuthRevision = authInfo.Revision
 		}
 	}
-
+	//请求信息序列化
 	data, err := r.Marshal()
 	if err != nil {
 		return nil, err
 	}
-
+	//会对信息的长度做限制
 	if len(data) > int(s.Cfg.MaxRequestBytes) {
 		return nil, ErrRequestTooLarge
 	}
 
+	//1.创建租约时，r.ID 一定不为0
 	id := r.ID
 	if id == 0 {
 		id = r.Header.ID
 	}
+	//通过 id 注册事件通知的 chan
 	ch := s.w.Register(id)
 
 	cctx, cancel := context.WithTimeout(ctx, s.Cfg.ReqTimeout())
 	defer cancel()
 
 	start := time.Now()
+	//将数据记录到日志里，失败会返回，由用户发起重试
 	err = s.r.Propose(cctx, data)
 	if err != nil {
+		//如果失败，需要在etcd度量统计中将失败计数器+1
 		proposalsFailed.Inc()
+		//给指定id，通过chan发送事件通知
 		s.w.Trigger(id, nil) // GC wait
 		return nil, err
 	}
+	//下面两个都是给 etcd 进行度量统计
 	proposalsPending.Inc()
 	defer proposalsPending.Dec()
 
 	select {
-	case x := <-ch:
+	case x := <-ch: //监听事件结果
 		return x.(*applyResult), nil
-	case <-cctx.Done():
+	case <-cctx.Done()://ctx 超时
+	    //表明在没有监听到事件结果前就超时了，属于失败，会在失败度量统计中+1
 		proposalsFailed.Inc()
+		//给指定id，通过chan发送事件通知
 		s.w.Trigger(id, nil) // GC wait
 		return nil, s.parseProposeCtxErr(cctx.Err(), start)
-	case <-s.done:
+	case <-s.done://表明 etcd关闭
 		return nil, ErrStopped
 	}
 }

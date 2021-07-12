@@ -171,13 +171,13 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 	return &RangeResult{KVs: kvs, Count: len(revpairs), Rev: curRev}, nil
 }
 
+//关联租约与key
 func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	rev := tw.beginRev + 1
 	c := rev
-	oldLease := lease.NoLease
+	oldLease := lease.NoLease //装载之前存在的key的租约ID
 
-	// if the key exists before, use its previous created and
-	// get its previous leaseID
+	//如果该key之前存在，则使用其先前创建的key，并获取其先前key的租约ID
 	_, created, ver, err := tw.s.kvindex.Get(key, rev)
 	if err == nil {
 		c = created.main
@@ -189,6 +189,8 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	revToBytes(idxRev, ibytes)
 
 	ver = ver + 1
+	//构建 mvccpb.KeyValue 时携带 lease id, 会持久化到 boltdb
+	//系统重启时从 boltdb keyBucketName 获取所有 key/value 时顺便恢复所有的租约
 	kv := mvccpb.KeyValue{
 		Key:            key,
 		Value:          value,
@@ -212,10 +214,12 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	tw.changes = append(tw.changes, kv)
 	tw.trace.Step("store kv pair into bolt db")
 
+	//如果 oldLease 有效的话，那么要先 Detach 取消关联
 	if oldLease != lease.NoLease {
 		if tw.s.le == nil {
 			panic("no lessor to detach lease")
 		}
+		//在租约的map里删除
 		err = tw.s.le.Detach(oldLease, []lease.LeaseItem{{Key: string(key)}})
 		if err != nil {
 			tw.storeTxnRead.s.lg.Error(
@@ -228,6 +232,8 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 		if tw.s.le == nil {
 			panic("no lessor to attach lease")
 		}
+		//最后调用 Attach 关联 key 与新的 lease
+		//添加到租约map里，但没有持久化到DB
 		err = tw.s.le.Attach(leaseID, []lease.LeaseItem{{Key: string(key)}})
 		if err != nil {
 			panic("unexpected error from lease Attach")

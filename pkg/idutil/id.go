@@ -1,19 +1,3 @@
-// Copyright 2015 The etcd Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Package idutil implements utility functions for generating unique,
-// randomized ids.
 package idutil
 
 import (
@@ -28,24 +12,27 @@ const (
 	suffixLen = tsLen + cntLen
 )
 
-// Generator generates unique identifiers based on counters, timestamps, and
-// a node member ID.
-//
-// The initial id is in this format:
-// High order 2 bytes are from memberID, next 5 bytes are from timestamp,
-// and low order one byte is a counter.
-// | prefix   | suffix              |
-// | 2 bytes  | 5 bytes   | 1 byte  |
-// | memberID | timestamp | cnt     |
-//
-// The timestamp 5 bytes is different when the machine is restart
-// after 1 ms and before 35 years.
-//
-// It increases suffix to generate the next id.
-// The count field may overflow to timestamp field, which is intentional.
-// It helps to extend the event window to 2^56. This doesn't break that
-// id generated after restart is unique because etcd throughput is <<
-// 256req/ms(250k reqs/second).
+
+/**
+包 idutil 实现了用于生成唯一的随机 ID 的实用函数。
+
+Generator 根据计数器、时间戳和节点成员 ID 生成唯一标识符。
+
+初始 id 格式如下：
+高位 2 个字节来自 memberID，接下来 5 个字节来自时间戳，低位 1 个字节是计数器。
+|前缀     |后缀              |
+| 2 字节 | 5 个字节 | 1 字节  |
+|会员ID |时间戳     | cnt    |
+
+当机器在 1 ms 之后和 35 年之前重新启动时，时间戳 5 个字节是不同的。
+
+它增加后缀以生成下一个 id。
+
+计数字段可能会溢出到时间戳字段，这是故意的。
+它有助于将事件窗口扩展到 2^56。这不会破坏重启后生成的 id 是唯一的，因为 etcd 吞吐量是 << 256reqms(250k reqssecond)。
+ */
+
+
 type Generator struct {
 	// high order 2 bytes
 	prefix uint64
@@ -63,7 +50,7 @@ func NewGenerator(memberID uint16, now time.Time) *Generator {
 	}
 }
 
-// Next generates a id that is unique.
+// Next 生成唯一的 id。
 func (g *Generator) Next() uint64 {
 	suffix := atomic.AddUint64(&g.suffix, 1)
 	id := g.prefix | lowbit(suffix, suffixLen)

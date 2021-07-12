@@ -141,8 +141,7 @@ func (h *leaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(v)
 }
 
-// RenewHTTP renews a lease at a given primary server.
-// TODO: Batch request in future?
+// RenewHTTP 在给定的主服务器上续订租约。
 func RenewHTTP(ctx context.Context, id lease.LeaseID, url string, rt http.RoundTripper) (int64, error) {
 	// will post lreq protobuf to leader
 	lreq, err := (&pb.LeaseKeepAliveRequest{ID: int64(id)}).Marshal()
@@ -151,6 +150,7 @@ func RenewHTTP(ctx context.Context, id lease.LeaseID, url string, rt http.RoundT
 	}
 
 	cc := &http.Client{Transport: rt}
+	//post 请求节点
 	req, err := http.NewRequest("POST", url, bytes.NewReader(lreq))
 	if err != nil {
 		return -1, err

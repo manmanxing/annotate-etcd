@@ -27,7 +27,7 @@ import (
 
 // RaftAttributes represents the raft related attributes of an etcd member.
 type RaftAttributes struct {
-	// PeerURLs is the list of peers in the raft cluster.
+	// PeerURLs 是 raft 集群中的节点列表。
 	// TODO(philips): ensure these are URLs
 	PeerURLs []string `json:"peerURLs"`
 	// IsLearner indicates if the member is raft learner.

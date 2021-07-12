@@ -130,6 +130,7 @@ func (s *EtcdServer) newApplierV3() applierV3 {
 	)
 }
 
+//接收各种客户端的请求
 func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult {
 	op := "unknown"
 	ar := &applyResult{}
@@ -161,9 +162,11 @@ func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult {
 		ar.resp, ar.physc, ar.trace, ar.err = a.s.applyV3.Compaction(r.Compaction)
 	case r.LeaseGrant != nil:
 		op = "LeaseGrant"
+		//申请租约
 		ar.resp, ar.err = a.s.applyV3.LeaseGrant(r.LeaseGrant)
 	case r.LeaseRevoke != nil:
 		op = "LeaseRevoke"
+		//租约过期
 		ar.resp, ar.err = a.s.applyV3.LeaseRevoke(r.LeaseRevoke)
 	case r.LeaseCheckpoint != nil:
 		op = "LeaseCheckpoint"
@@ -236,6 +239,7 @@ func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult {
 	return ar
 }
 
+//创建完 lease 之后，需要与 key 相关连起来
 func (a *applierV3backend) Put(ctx context.Context, txn mvcc.TxnWrite, p *pb.PutRequest) (resp *pb.PutResponse, trace *traceutil.Trace, err error) {
 	resp = &pb.PutResponse{}
 	resp.Header = &pb.ResponseHeader{}
@@ -286,7 +290,7 @@ func (a *applierV3backend) Put(ctx context.Context, txn mvcc.TxnWrite, p *pb.Put
 			resp.PrevKv = &rr.KVs[0]
 		}
 	}
-
+	//开始关联
 	resp.Header.Revision = txn.Put(p.Key, val, leaseID)
 	trace.AddField(traceutil.Field{Key: "response_revision", Value: resp.Header.Revision})
 	return resp, trace, nil
@@ -668,6 +672,7 @@ func (a *applierV3backend) Compaction(compaction *pb.CompactionRequest) (*pb.Com
 	return resp, ch, trace, err
 }
 
+//申请租约
 func (a *applierV3backend) LeaseGrant(lc *pb.LeaseGrantRequest) (*pb.LeaseGrantResponse, error) {
 	l, err := a.s.lessor.Grant(lease.LeaseID(lc.ID), lc.TTL)
 	resp := &pb.LeaseGrantResponse{}
@@ -678,7 +683,7 @@ func (a *applierV3backend) LeaseGrant(lc *pb.LeaseGrantRequest) (*pb.LeaseGrantR
 	}
 	return resp, err
 }
-
+//跟申请租约一样，过期删除操作是需要经过 raft 协义的
 func (a *applierV3backend) LeaseRevoke(lc *pb.LeaseRevokeRequest) (*pb.LeaseRevokeResponse, error) {
 	err := a.s.lessor.Revoke(lease.LeaseID(lc.ID))
 	return &pb.LeaseRevokeResponse{Header: newHeader(a.s)}, err

@@ -94,8 +94,7 @@ type store struct {
 	lg *zap.Logger
 }
 
-// NewStore returns a new store. It is useful to create a store inside
-// mvcc pkg. It should only be used for testing externally.
+// NewStore 创建一个新的 store
 func NewStore(lg *zap.Logger, b backend.Backend, le lease.Lessor, ci cindex.ConsistentIndexer, cfg StoreConfig) *store {
 	if lg == nil {
 		lg = zap.NewNop()
@@ -350,6 +349,7 @@ func (s *store) Restore(b backend.Backend) error {
 	return s.restore()
 }
 
+//其实就是先从 boltdb 的 keyBucketName bucket 遍历所有用户 keys 信息，找出带有租约的 keyToLease, 然后挨个调用 Attach 去关联
 func (s *store) restore() error {
 	s.setupMetricsReporter()
 
@@ -426,6 +426,7 @@ func (s *store) restore() error {
 			tx.Unlock()
 			panic("no lessor to attach lease")
 		}
+		//开始关联
 		err := s.le.Attach(lid, []lease.LeaseItem{{Key: key}})
 		if err != nil {
 			s.lg.Error(

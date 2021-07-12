@@ -122,15 +122,14 @@ func (rd Ready) appliedCursor() uint64 {
 	return 0
 }
 
-// Node represents a node in a raft cluster.
+// Node 代表 raft 集群中的一个节点。
 type Node interface {
 	// Tick increments the internal logical clock for the Node by a single tick. Election
 	// timeouts and heartbeat timeouts are in units of ticks.
 	Tick()
-	// Campaign causes the Node to transition to candidate state and start campaigning to become leader.
+	// Campaign 使节点转换为候选状态并开始竞选以成为领导者。
 	Campaign(ctx context.Context) error
-	// Propose proposes that data be appended to the log. Note that proposals can be lost without
-	// notice, therefore it is user's job to ensure proposal retries.
+	// Propose 将数据附加到日志中。请注意，本操作的结果可能会在没有通知的情况下丢失，因此用户需要确保重试。
 	Propose(ctx context.Context, data []byte) error
 	// ProposeConfChange proposes a configuration change. Like any proposal, the
 	// configuration change may be dropped with or without an error being

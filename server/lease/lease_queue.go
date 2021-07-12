@@ -58,8 +58,7 @@ func (pq *LeaseQueue) Pop() interface{} {
 	return item
 }
 
-// LeaseExpiredNotifier is a queue used to notify lessor to revoke expired lease.
-// Only save one item for a lease, `Register` will update time of the corresponding lease.
+// LeaseExpiredNotifier 是用于通知出租人撤销过期租约的队列。一个租约只保存一项，`Register`会更新对应租约的时间。
 type LeaseExpiredNotifier struct {
 	m     map[LeaseID]*LeaseWithTime
 	queue LeaseQueue
@@ -80,6 +79,9 @@ func (mq *LeaseExpiredNotifier) Init() {
 	}
 }
 
+//会根据租约的ID去 map 里查找是否存在
+//如果存在：重新建立 heap 的顺序
+//如果不存在，将item推到heap上
 func (mq *LeaseExpiredNotifier) RegisterOrUpdate(item *LeaseWithTime) {
 	if old, ok := mq.m[item.id]; ok {
 		old.time = item.time

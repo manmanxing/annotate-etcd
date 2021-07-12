@@ -2288,9 +2288,9 @@ func (m *WatchResponse) GetEvents() []*mvccpb.Event {
 }
 
 type LeaseGrantRequest struct {
-	// TTL is the advisory time-to-live in seconds. Expired lease will return -1.
+	// TTL 是以秒为单位的建议生存时间。到期租约将返回 -1。
 	TTL int64 `protobuf:"varint,1,opt,name=TTL,proto3" json:"TTL,omitempty"`
-	// ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID.
+	// ID 是租用请求的 ID。如果 ID 设置为 0，则程序会自动生成一个唯一 ID。
 	ID                   int64    `protobuf:"varint,2,opt,name=ID,proto3" json:"ID,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -2345,11 +2345,13 @@ func (m *LeaseGrantRequest) GetID() int64 {
 }
 
 type LeaseGrantResponse struct {
+	//请求头
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
-	// ID is the lease ID for the granted lease.
+	// ID 是授予租约的租约 ID。
 	ID int64 `protobuf:"varint,2,opt,name=ID,proto3" json:"ID,omitempty"`
-	// TTL is the server chosen lease time-to-live in seconds.
+	// TTL 是以秒为单位选择的服务器租用时间。
 	TTL                  int64    `protobuf:"varint,3,opt,name=TTL,proto3" json:"TTL,omitempty"`
+	// 返回的错误信息
 	Error                string   `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`

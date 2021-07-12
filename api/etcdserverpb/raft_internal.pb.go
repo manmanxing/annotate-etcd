@@ -26,10 +26,11 @@ var _ = math.Inf
 const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
 type RequestHeader struct {
+	//请求头ID
 	ID uint64 `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
-	// username is a username that is associated with an auth token of gRPC connection
+	//与 gRPC 连接的身份验证令牌关联的用户名
 	Username string `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
-	// auth_revision is a revision number of auth.authStore. It is not related to mvcc
+	// auth_revision 是 auth.authStore 的修订号。它与 mvcc 无关
 	AuthRevision         uint64   `protobuf:"varint,3,opt,name=auth_revision,json=authRevision,proto3" json:"auth_revision,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`

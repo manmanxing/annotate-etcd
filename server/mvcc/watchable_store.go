@@ -207,7 +207,7 @@ func (s *watchableStore) Restore(b backend.Backend) error {
 	return nil
 }
 
-// syncWatchersLoop syncs the watcher in the unsynced map every 100ms.
+// syncWatchersLoop 每 100 毫秒在未同步的 map 中同步 watcher。
 func (s *watchableStore) syncWatchersLoop() {
 	defer s.wg.Done()
 
@@ -238,8 +238,7 @@ func (s *watchableStore) syncWatchersLoop() {
 	}
 }
 
-// syncVictimsLoop tries to write precomputed watcher responses to
-// watchers that had a blocked watcher channel
+// syncVictimsLoop 尝试将预先计算的 watcher 响应写入具有阻塞 watcher 通道的 watcher
 func (s *watchableStore) syncVictimsLoop() {
 	defer s.wg.Done()
 
