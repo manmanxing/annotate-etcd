@@ -21,15 +21,11 @@ import "encoding/binary"
 // is a '_'. The last 8 bytes is the revision.sub in big-endian format.
 const revBytesLen = 8 + 1 + 8
 
-// A revision indicates modification of the key-value space.
-// The set of changes that share same main revision changes the key-value space atomically.
+// 表示键值空间的修改。共享相同  main revision  的一组更改以原子方式更改键值空间。
 type revision struct {
-	// main is the main revision of a set of changes that happen atomically.
+	// 一组以原子方式执行的变更集的版本id
 	main int64
-
-	// sub is the sub revision of a change in a set of changes that happen
-	// atomically. Each change has different increasing sub revision in that
-	// set.
+	//是一组以原子方式执行的变更集中的某一个变更的子版本id，在该组中每个变更都有不同的递增的子版本id
 	sub int64
 }
 

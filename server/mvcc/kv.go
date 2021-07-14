@@ -24,9 +24,9 @@ import (
 )
 
 type RangeOptions struct {
-	Limit int64
-	Rev   int64
-	Count bool
+	Limit int64  //限制个数
+	Rev   int64 //请求范围的版本号
+	Count bool //是否计数？
 }
 
 type RangeResult struct {

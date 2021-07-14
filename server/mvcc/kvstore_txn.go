@@ -28,8 +28,8 @@ type storeTxnRead struct {
 	s  *store
 	tx backend.ReadTx
 
-	firstRev int64
-	rev      int64
+	firstRev int64 //第一个版本号
+	rev      int64 //当前的版本号
 
 	trace *traceutil.Trace
 }
@@ -116,22 +116,32 @@ func (tw *storeTxnWrite) End() {
 	tw.s.mu.RUnlock()
 }
 
+
+//Range 操作是 Read 读事务，会开启一个事务 txn
+//curRev：当前事务的当前版本号
+//ro：查询参数选项，包含查询的条数，是否计数，以及查询的当前版本号
 func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev int64, ro RangeOptions) (*RangeResult, error) {
 	rev := ro.Rev
+	//这里会检查版本，如果查询的版本号超过事务当前版本号视为无效
 	if rev > curRev {
 		return &RangeResult{KVs: nil, Count: -1, Rev: curRev}, ErrFutureRev
 	}
+	//查询的版本号<=0，会取事务当前版本号
 	if rev <= 0 {
 		rev = curRev
 	}
+	//已经被压缩的不能查询
 	if rev < tr.s.compactMainRev {
 		return &RangeResult{KVs: nil, Count: -1, Rev: 0}, ErrCompacted
 	}
+	//如果需要计数
 	if ro.Count {
 		total := tr.s.kvindex.CountRevisions(key, end, rev, int(ro.Limit))
 		tr.trace.Step("count revisions from in-memory index tree")
+		//这里返回 KVS 为 nil
 		return &RangeResult{KVs: nil, Count: total, Rev: curRev}, nil
 	}
+	//根据指定版本去 kvindex 即内存 btree 中查找所有符合 rev 版本从 key 到 end 的版本信息
 	revpairs := tr.s.kvindex.Revisions(key, end, rev, int(ro.Limit))
 	tr.trace.Step("range keys from in-memory index tree")
 	if len(revpairs) == 0 {
@@ -145,13 +155,17 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 
 	kvs := make([]mvccpb.KeyValue, limit)
 	revBytes := newRevBytes()
+	//循环从内存中查找到的版本信息，去磁盘查询真实数据
 	for i, revpair := range revpairs[:len(kvs)] {
+		//判断是否需要退出
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
 		}
+		//将rev 转为 Bytes
 		revToBytes(revpair, revBytes)
+		//UnsafeRange 去底层磁盘 boltdb 中获取真实 key/value
 		_, vs := tr.tx.UnsafeRange(keyBucketName, revBytes, nil, 0)
 		if len(vs) != 1 {
 			tr.s.lg.Fatal(
@@ -171,26 +185,31 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 	return &RangeResult{KVs: kvs, Count: len(revpairs), Rev: curRev}, nil
 }
 
-//关联租约与key
+//更新数据，并关联租约与key
 func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	rev := tw.beginRev + 1
 	c := rev
-	oldLease := lease.NoLease //装载之前存在的key的租约ID
+	oldLease := lease.NoLease //装载之前存在的key的租约ID，这里预先初始化为 NoLease
 
+	//根据当前版本 key, rev 查找内存 kvindex, 看看是否有当前 key 的版本记录。
 	//如果该key之前存在，则使用其先前创建的key，并获取其先前key的租约ID
+	//created： 表示创建时的版本号，也就是 CreateRevision
+	//ver : version
 	_, created, ver, err := tw.s.kvindex.Get(key, rev)
-	if err == nil {
+	if err == nil {//如果没找到，会报错 ErrRevisionNotFound
 		c = created.main
 		oldLease = tw.s.le.GetLease(lease.LeaseItem{Key: string(key)})
 	}
 	tw.trace.Step("get key's previous created_revision and leaseID")
 	ibytes := newRevBytes()
 	idxRev := revision{main: rev, sub: int64(len(tw.changes))}
+	//这里将 rev 转换为 byte
 	revToBytes(idxRev, ibytes)
 
 	ver = ver + 1
 	//构建 mvccpb.KeyValue 时携带 lease id, 会持久化到 boltdb
 	//系统重启时从 boltdb keyBucketName 获取所有 key/value 时顺便恢复所有的租约
+	//这里还会确定这次操作的 ModRevision 与 CreateRevision，Version
 	kv := mvccpb.KeyValue{
 		Key:            key,
 		Value:          value,
@@ -199,7 +218,7 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 		Version:        ver,
 		Lease:          int64(leaseID),
 	}
-
+	//序列化
 	d, err := kv.Marshal()
 	if err != nil {
 		tw.storeTxnRead.s.lg.Fatal(
@@ -209,12 +228,15 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	}
 
 	tw.trace.Step("marshal mvccpb.KeyValue")
+
+	//UnsafeSeqPut 操作写磁盘 boltdb, key 是 Revision, value 是 mvccpb.KeyValue 序列化后的数据
 	tw.tx.UnsafeSeqPut(keyBucketName, ibytes, d)
+	//更新内存中的 kvindex btree
 	tw.s.kvindex.Put(key, idxRev)
 	tw.changes = append(tw.changes, kv)
 	tw.trace.Step("store kv pair into bolt db")
 
-	//如果 oldLease 有效的话，那么要先 Detach 取消关联
+	//如果 oldLease 有效的话，那么要先 Detach 取消key 与 该 lease 的关联
 	if oldLease != lease.NoLease {
 		if tw.s.le == nil {
 			panic("no lessor to detach lease")
@@ -234,6 +256,7 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 		}
 		//最后调用 Attach 关联 key 与新的 lease
 		//添加到租约map里，但没有持久化到DB
+		//todo 什么时候会持久化道DB
 		err = tw.s.le.Attach(leaseID, []lease.LeaseItem{{Key: string(key)}})
 		if err != nil {
 			panic("unexpected error from lease Attach")

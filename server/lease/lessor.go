@@ -31,10 +31,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// NoLease is a special LeaseID representing the absence of a lease.
+// NoLease 是一个特殊的 LeaseID，表示没有租约。
 const NoLease = LeaseID(0)
 
-// MaxLeaseTTL is the maximum lease TTL value
+// MaxLeaseTTL 是最大租约 TTL 值
 const MaxLeaseTTL = 9000000000
 
 var (

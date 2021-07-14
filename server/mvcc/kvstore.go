@@ -84,7 +84,8 @@ type store struct {
 	revMu sync.RWMutex
 	// currentRev is the revision of the last completed transaction.
 	currentRev int64
-	// compactMainRev is the main revision of the last compaction.
+	// compactMainRev 是最后一次压缩的主要修订版。
+	// 压缩指的是：
 	compactMainRev int64
 
 	fifoSched schedule.Scheduler

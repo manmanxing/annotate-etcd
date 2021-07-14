@@ -69,7 +69,7 @@ var (
 //    {empty} -> key SHOULD be removed.
 type keyIndex struct {
 	key         []byte
-	modified    revision // the main rev of the last modification
+	modified    revision // 上次修改的主要版本，也就是 ModRevision
 	generations []generation
 }
 
@@ -331,11 +331,11 @@ func (ki *keyIndex) String() string {
 	return s
 }
 
-// generation contains multiple revisions of a key.
+// generation 包含一个key 的多个修订版本。
 type generation struct {
 	ver     int64
-	created revision // when the generation is created (put in first revision).
-	revs    []revision
+	created revision //当 generation 被创建时的版本号，也就是 CreateRevision
+	revs    []revision //保存的是 version
 }
 
 func (g *generation) isEmpty() bool { return g == nil || len(g.revs) == 0 }

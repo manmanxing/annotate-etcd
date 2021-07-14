@@ -270,9 +270,9 @@ func (DowngradeRequest_DowngradeAction) EnumDescriptor() ([]byte, []int) {
 }
 
 type ResponseHeader struct {
-	// cluster_id is the ID of the cluster which sent the response.
+	//发送响应的集群的 ID
 	ClusterId uint64 `protobuf:"varint,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
-	// member_id is the ID of the member which sent the response.
+	//发送响应的成员的 ID
 	MemberId uint64 `protobuf:"varint,2,opt,name=member_id,json=memberId,proto3" json:"member_id,omitempty"`
 	// revision is the key-value store revision when the request was applied.
 	// For watch progress responses, the header.revision indicates progress. All future events
@@ -520,13 +520,14 @@ func (m *RangeRequest) GetMaxCreateRevision() int64 {
 }
 
 type RangeResponse struct {
+	//响应头
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
-	// kvs is the list of key-value pairs matched by the range request.
-	// kvs is empty when count is requested.
+	//Kvs 是范围请求匹配的键值对列表，里面有我们想要的数据
+	//当使用 Count 时，kvs为空
 	Kvs []*mvccpb.KeyValue `protobuf:"bytes,2,rep,name=kvs,proto3" json:"kvs,omitempty"`
-	// more indicates if there are more keys to return in the requested range.
+	//指示在请求的范围内是否还有更多键要返回。
 	More bool `protobuf:"varint,3,opt,name=more,proto3" json:"more,omitempty"`
-	// count is set to the number of keys within the range when requested.
+	//请求时范围内的Key的数量统计
 	Count                int64    `protobuf:"varint,4,opt,name=count,proto3" json:"count,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`

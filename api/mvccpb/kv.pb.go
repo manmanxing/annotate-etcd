@@ -50,21 +50,19 @@ func (Event_EventType) EnumDescriptor() ([]byte, []int) {
 }
 
 type KeyValue struct {
-	// key is the key in bytes. An empty key is not allowed.
+	// key 是一个键的 byte数组，空的key是不被允许的
 	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// create_revision is the revision of last creation on this key.
+	// 作用域为 key, 等于创建这个 key 时的 `Revision`, 直到删除前都保持不变
 	CreateRevision int64 `protobuf:"varint,2,opt,name=create_revision,json=createRevision,proto3" json:"create_revision,omitempty"`
-	// mod_revision is the revision of last modification on this key.
+	// 作用域为 key, 等于修改这个 key 时的 `Revision`, 只要这个 key 更新都会改变
 	ModRevision int64 `protobuf:"varint,3,opt,name=mod_revision,json=modRevision,proto3" json:"mod_revision,omitempty"`
-	// version is the version of the key. A deletion resets
-	// the version to zero and any modification of the key
-	// increases its version.
+	// 作用域为 key, 删除会将 version 重置为零，并且 key 的任何修改都会增加 version。
 	Version int64 `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	// value is the value held by the key, in bytes.
+	// 键持有的值， byte 数组.
 	Value []byte `protobuf:"bytes,5,opt,name=value,proto3" json:"value,omitempty"`
-	// lease is the ID of the lease that attached to key.
-	// When the attached lease expires, the key will be deleted.
-	// If lease is 0, then no lease is attached to the key.
+	// 附加到密钥的租约的 ID
+	// 当附加租约到期时，密钥将被删除。
+	// 如果租约为 0，则没有租约附加到密钥。
 	Lease                int64    `protobuf:"varint,6,opt,name=lease,proto3" json:"lease,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
