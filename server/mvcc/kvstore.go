@@ -576,7 +576,8 @@ func (s *store) setupMetricsReporter() {
 	reportCompactRevMu.Unlock()
 }
 
-// appendMarkTombstone appends tombstone mark to normal revision bytes.
+// appendMarkTombstone 将墓碑标记附加到正常的 revision 字节数组里。
+// 其实就是给 revision 打一个删除标记
 func appendMarkTombstone(lg *zap.Logger, b []byte) []byte {
 	if len(b) != revBytesLen {
 		lg.Panic(

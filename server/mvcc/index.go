@@ -170,12 +170,13 @@ func (ti *treeIndex) Tombstone(key []byte, rev revision) error {
 
 	ti.Lock()
 	defer ti.Unlock()
-	item := ti.tree.Get(keyi)
+	//会去内存的 brtree 里去查 keyIndex
+	item := ti.tree.Get(keyi)//这里是一个 interface
 	if item == nil {
 		return ErrRevisionNotFound
 	}
 
-	ki := item.(*keyIndex)
+	ki := item.(*keyIndex)//类型转换
 	return ki.tombstone(ti.lg, rev.main, rev.sub)
 }
 

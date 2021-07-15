@@ -73,7 +73,7 @@ type keyIndex struct {
 	generations []generation
 }
 
-// put puts a revision to the keyIndex.
+// put 更新 keyIndex 的 revision
 func (ki *keyIndex) put(lg *zap.Logger, main int64, sub int64) {
 	rev := revision{main: main, sub: sub}
 
@@ -123,10 +123,14 @@ func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 			zap.String("key", string(ki.key)),
 		)
 	}
+	//generations 的最新的 revision 不能为空
 	if ki.generations[len(ki.generations)-1].isEmpty() {
 		return ErrRevisionNotFound
 	}
+	//更新 revision
 	ki.put(lg, main, sub)
+	//这里的会生成一个空的 generation
+	//todo 为什么要生成
 	ki.generations = append(ki.generations, generation{})
 	keysGauge.Dec()
 	return nil

@@ -191,7 +191,7 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	c := rev
 	oldLease := lease.NoLease //装载之前存在的key的租约ID，这里预先初始化为 NoLease
 
-	//根据当前版本 key, rev 查找内存 kvindex, 看看是否有当前 key 的版本记录。
+	//根据 key, rev 查找内存 kvindex, 看看是否有当前 key 的版本记录。
 	//如果该key之前存在，则使用其先前创建的key，并获取其先前key的租约ID
 	//created： 表示创建时的版本号，也就是 CreateRevision
 	//ver : version
@@ -270,10 +270,12 @@ func (tw *storeTxnWrite) deleteRange(key, end []byte) int64 {
 	if len(tw.changes) > 0 {
 		rrev++
 	}
+	//根据key,end, rev 查找内存 kvindex, 看看是否有当前 key 的版本记录列表。
 	keys, _ := tw.s.kvindex.Range(key, end, rrev)
 	if len(keys) == 0 {
 		return 0
 	}
+	//遍历当前 key 的版本记录列表进行删除
 	for _, key := range keys {
 		tw.delete(key)
 	}
@@ -283,12 +285,14 @@ func (tw *storeTxnWrite) deleteRange(key, end []byte) int64 {
 func (tw *storeTxnWrite) delete(key []byte) {
 	ibytes := newRevBytes()
 	idxRev := revision{main: tw.beginRev + 1, sub: int64(len(tw.changes))}
+	//将 rev 转换为 byte
 	revToBytes(idxRev, ibytes)
-
+	//添加删除标记到 revision 的字节数组中
 	ibytes = appendMarkTombstone(tw.storeTxnRead.s.lg, ibytes)
-
+	//并且生成一个只包含 key 的 mvccpb.KeyValue，并保存到磁盘中
 	kv := mvccpb.KeyValue{Key: key}
 
+	//先序列化
 	d, err := kv.Marshal()
 	if err != nil {
 		tw.storeTxnRead.s.lg.Fatal(
@@ -296,8 +300,12 @@ func (tw *storeTxnWrite) delete(key []byte) {
 			zap.Error(err),
 		)
 	}
-
+	//再保存到磁盘里，磁盘里也只是带一个删除标记的 revision，并不会释放磁盘空间
+	//todo 什么时候释放磁盘空间
 	tw.tx.UnsafeSeqPut(keyBucketName, ibytes, d)
+	//更新 keyIndex 的 revision 为 带有删除标记的 revision，并不会释放内存空间
+	//并且会生成一个新的空 generation
+	//todo 什么是糊释放内存空间
 	err = tw.s.kvindex.Tombstone(key, idxRev)
 	if err != nil {
 		tw.storeTxnRead.s.lg.Fatal(
@@ -306,11 +314,14 @@ func (tw *storeTxnWrite) delete(key []byte) {
 			zap.Error(err),
 		)
 	}
+	//保存变动的 mvccpb.KeyValue
 	tw.changes = append(tw.changes, kv)
 
+	//获取 key 的租约信息
 	item := lease.LeaseItem{Key: string(key)}
 	leaseID := tw.s.le.GetLease(item)
 
+	//如果key带有租约信息，还需要将该租约与该key解绑
 	if leaseID != lease.NoLease {
 		err = tw.s.le.Detach(leaseID, []lease.LeaseItem{item})
 		if err != nil {
