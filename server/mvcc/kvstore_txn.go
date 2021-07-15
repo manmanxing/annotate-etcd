@@ -301,11 +301,10 @@ func (tw *storeTxnWrite) delete(key []byte) {
 		)
 	}
 	//再保存到磁盘里，磁盘里也只是带一个删除标记的 revision，并不会释放磁盘空间
-	//todo 什么时候释放磁盘空间
+	//真正的删除是在compact、Defrag阶段处理
 	tw.tx.UnsafeSeqPut(keyBucketName, ibytes, d)
 	//更新 keyIndex 的 revision 为 带有删除标记的 revision，并不会释放内存空间
-	//并且会生成一个新的空 generation
-	//todo 什么是糊释放内存空间
+	//并且appned一个新的空 generation（目的就是结束当前的generation）
 	err = tw.s.kvindex.Tombstone(key, idxRev)
 	if err != nil {
 		tw.storeTxnRead.s.lg.Fatal(

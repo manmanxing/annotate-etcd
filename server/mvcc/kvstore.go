@@ -85,7 +85,7 @@ type store struct {
 	// currentRev is the revision of the last completed transaction.
 	currentRev int64
 	// compactMainRev 是最后一次压缩的主要修订版。
-	// 压缩指的是：
+	// 压缩指的是：删除key操作
 	compactMainRev int64
 
 	fifoSched schedule.Scheduler
@@ -259,21 +259,24 @@ func (s *store) updateCompactRev(rev int64) (<-chan struct{}, error) {
 
 func (s *store) compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, error) {
 	ch := make(chan struct{})
+	//创建一个用于 compact 的匿名函数
 	var j = func(ctx context.Context) {
 		if ctx.Err() != nil {
 			s.compactBarrier(ctx, ch)
 			return
 		}
 		start := time.Now()
-		keep := s.kvindex.Compact(rev)
+		keep := s.kvindex.Compact(rev)//这里执行内存btree的数据压缩，返回结果是需要保留的k
 		indexCompactionPauseMs.Observe(float64(time.Since(start) / time.Millisecond))
+		//遍历所有的key，除了在keep中的不删，其他key全部从bolt中删除。
+		//这里的删除并不能把占用的空间释放。
 		if !s.scheduleCompaction(rev, keep) {
 			s.compactBarrier(context.TODO(), ch)
 			return
 		}
 		close(ch)
 	}
-
+	//要求调度程序调度给定的 func
 	s.fifoSched.Schedule(j)
 	trace.Step("schedule compaction")
 	return ch, nil

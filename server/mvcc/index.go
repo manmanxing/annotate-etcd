@@ -38,6 +38,7 @@ type index interface {
 	KeyIndex(ki *keyIndex) *keyIndex
 }
 
+//btree 的相关操作
 type treeIndex struct {
 	sync.RWMutex
 	tree *btree.BTree
@@ -51,28 +52,37 @@ func newTreeIndex(lg *zap.Logger) index {
 	}
 }
 
+//添加/修改
 func (ti *treeIndex) Put(key []byte, rev revision) {
+	//因为 btree 上存储key 是 keyIndex 结构，因此这里需要组装
 	keyi := &keyIndex{key: key}
 
 	ti.Lock()
 	defer ti.Unlock()
+	//去 btree 上查找
 	item := ti.tree.Get(keyi)
-	if item == nil {
+	if item == nil {//如果查不到，说明是新增
+		//更新 keyIndex 的 revision
 		keyi.put(ti.lg, rev.main, rev.sub)
+		//将给定的key添加到 btree 中。
 		ti.tree.ReplaceOrInsert(keyi)
 		return
 	}
 	okeyi := item.(*keyIndex)
+	//如果查询到，则只需要更新 keyIndex 的 revision
 	okeyi.put(ti.lg, rev.main, rev.sub)
 }
 
+//查询
 func (ti *treeIndex) Get(key []byte, atRev int64) (modified, created revision, ver int64, err error) {
 	keyi := &keyIndex{key: key}
 	ti.RLock()
 	defer ti.RUnlock()
+	//去 btree 上查找
 	if keyi = ti.keyIndex(keyi); keyi == nil {
 		return revision{}, revision{}, 0, ErrRevisionNotFound
 	}
+	//能查询到，再计算该key的 createdRevision and version and Revision
 	return keyi.get(ti.lg, atRev)
 }
 
@@ -213,20 +223,25 @@ func (ti *treeIndex) RangeSince(key, end []byte, rev int64) []revision {
 	return revs
 }
 
+//btree 上进行 compact
 func (ti *treeIndex) Compact(rev int64) map[revision]struct{} {
+	//保存可用的key
 	available := make(map[revision]struct{})
 	ti.lg.Info("compact tree index", zap.Int64("revision", rev))
 	ti.Lock()
+	//这里对 tree 进行 clone，可以并发使用
 	clone := ti.tree.Clone()
 	ti.Unlock()
 
+	//遍历是 tree
 	clone.Ascend(func(item btree.Item) bool {
 		keyi := item.(*keyIndex)
-		//Lock is needed here to prevent modification to the keyIndex while
-		//compaction is going on or revision added to empty before deletion
+		//此处需要锁定以防止在 compact 进行时修改 keyIndex 或在删除前将 revision 添加为空
 		ti.Lock()
+		//遍历过滤出那些key需要保留，哪些需要删
 		keyi.compact(ti.lg, rev, available)
 		if keyi.isEmpty() {
+			//如果是需要删除的就从btree中删除
 			item := ti.tree.Delete(keyi)
 			if item == nil {
 				ti.lg.Panic("failed to delete during compaction")

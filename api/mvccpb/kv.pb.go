@@ -56,9 +56,9 @@ type KeyValue struct {
 	CreateRevision int64 `protobuf:"varint,2,opt,name=create_revision,json=createRevision,proto3" json:"create_revision,omitempty"`
 	// 作用域为 key, 等于修改这个 key 时的 `Revision`, 只要这个 key 更新都会改变
 	ModRevision int64 `protobuf:"varint,3,opt,name=mod_revision,json=modRevision,proto3" json:"mod_revision,omitempty"`
-	// 作用域为 key, 删除会将 version 重置为零，并且 key 的任何修改都会增加 version。
+	// 作用域为 key, 删除会将 version 重置为零，并且 key 的任何修改都会让其自增
 	Version int64 `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	// 键持有的值， byte 数组.
+	// 键持有的值，其实是json序列化后的 byte 数组
 	Value []byte `protobuf:"bytes,5,opt,name=value,proto3" json:"value,omitempty"`
 	// 附加到密钥的租约的 ID
 	// 当附加租约到期时，密钥将被删除。

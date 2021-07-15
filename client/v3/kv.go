@@ -50,7 +50,7 @@ type KV interface {
 	// Delete deletes a key, or optionally using WithRange(end), [key, end).
 	Delete(ctx context.Context, key string, opts ...OpOption) (*DeleteResponse, error)
 
-	// Compact compacts etcd KV history before the given rev.
+	// Compact 压缩给定的 rev 之前的 etcd KV 历史记录。
 	Compact(ctx context.Context, rev int64, opts ...CompactOption) (*CompactResponse, error)
 
 	// Do applies a single Op on KV without a transaction.

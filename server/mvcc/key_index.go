@@ -130,7 +130,7 @@ func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 	//更新 revision
 	ki.put(lg, main, sub)
 	//这里的会生成一个空的 generation
-	//todo 为什么要生成
+	//是为了结束该key的generation
 	ki.generations = append(ki.generations, generation{})
 	keysGauge.Dec()
 	return nil
@@ -201,10 +201,8 @@ func (ki *keyIndex) since(lg *zap.Logger, rev int64) []revision {
 	return revs
 }
 
-// compact compacts a keyIndex by removing the versions with smaller or equal
-// revision than the given atRev except the largest one (If the largest one is
-// a tombstone, it will not be kept).
-// If a generation becomes empty during compaction, it will be removed.
+//compact 通过删除除最大版本之外具有小于或等于给定 atRev 的版本来 compact  keyIndex
+//（如果最大的版本是 tombstone，则不会保留）。如果一个 generation 在 compact 期间变空，它将被删除。
 func (ki *keyIndex) compact(lg *zap.Logger, atRev int64, available map[revision]struct{}) {
 	if ki.isEmpty() {
 		lg.Panic(
@@ -212,7 +210,7 @@ func (ki *keyIndex) compact(lg *zap.Logger, atRev int64, available map[revision]
 			zap.String("key", string(ki.key)),
 		)
 	}
-
+	//具体的compact，就是将atRev记录之前的revision都删除，返回删除后有效的代和代内revIndex
 	genIdx, revIndex := ki.doCompact(atRev, available)
 
 	g := &ki.generations[genIdx]
@@ -249,8 +247,7 @@ func (ki *keyIndex) keep(atRev int64, available map[revision]struct{}) {
 }
 
 func (ki *keyIndex) doCompact(atRev int64, available map[revision]struct{}) (genIdx int, revIndex int) {
-	// walk until reaching the first revision smaller or equal to "atRev",
-	// and add the revision to the available map
+	//直到到达小于或等于“atRev”的第一个 revision，并将 revision 添加到 available
 	f := func(rev revision) bool {
 		if rev.main <= atRev {
 			available[rev] = struct{}{}
