@@ -210,16 +210,16 @@ func (ki *keyIndex) compact(lg *zap.Logger, atRev int64, available map[revision]
 			zap.String("key", string(ki.key)),
 		)
 	}
-	//具体的compact，就是将atRev记录之前的revision都删除，返回删除后有效的代和代内revIndex
+	//具体的compact，就是将atRev记录之前的revision都删除，返回删除后有效的 generation 和 generation 内revIndex
 	genIdx, revIndex := ki.doCompact(atRev, available)
 
 	g := &ki.generations[genIdx]
 	if !g.isEmpty() {
-		// remove the previous contents.
+		//移除 revs 列表中 revIndex 之前的内容
 		if revIndex != -1 {
 			g.revs = g.revs[revIndex:]
 		}
-		// remove any tombstone
+		//如果最后一个revision被打上删除的标记，也视作无效，需要删除
 		if len(g.revs) == 1 && genIdx != len(ki.generations)-1 {
 			delete(available, g.revs[0])
 			genIdx++

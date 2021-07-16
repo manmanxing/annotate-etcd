@@ -233,12 +233,12 @@ func (ti *treeIndex) Compact(rev int64) map[revision]struct{} {
 	clone := ti.tree.Clone()
 	ti.Unlock()
 
-	//遍历是 tree
+	// Ascend 遍历 tree
 	clone.Ascend(func(item btree.Item) bool {
 		keyi := item.(*keyIndex)
 		//此处需要锁定以防止在 compact 进行时修改 keyIndex 或在删除前将 revision 添加为空
 		ti.Lock()
-		//遍历过滤出那些key需要保留，哪些需要删
+		//通过遍历，过滤出哪些key需要保留，哪些需要删
 		keyi.compact(ti.lg, rev, available)
 		if keyi.isEmpty() {
 			//如果是需要删除的就从btree中删除

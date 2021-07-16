@@ -266,17 +266,18 @@ func (s *store) compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, err
 			return
 		}
 		start := time.Now()
-		keep := s.kvindex.Compact(rev)//这里执行内存btree的数据压缩，返回结果是需要保留的k
+		//这里执行内存btree的数据压缩，返回结果是需要保留的k
+		keep := s.kvindex.Compact(rev)
 		indexCompactionPauseMs.Observe(float64(time.Since(start) / time.Millisecond))
 		//遍历所有的key，除了在keep中的不删，其他key全部从bolt中删除。
-		//这里的删除并不能把占用的空间释放。
+		//注意：这里的删除并不能把占用的空间释放，真正的空间释放是在 Defrag 过程
 		if !s.scheduleCompaction(rev, keep) {
 			s.compactBarrier(context.TODO(), ch)
 			return
 		}
 		close(ch)
 	}
-	//要求调度程序调度给定的 func
+	//要求调度程序 FIFO 调度给定的 func
 	s.fifoSched.Schedule(j)
 	trace.Step("schedule compaction")
 	return ch, nil

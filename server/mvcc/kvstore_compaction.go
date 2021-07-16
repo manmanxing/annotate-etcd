@@ -40,9 +40,11 @@ func (s *store) scheduleCompaction(compactMainRev int64, keep map[revision]struc
 		tx := s.b.BatchTx()
 		tx.Lock()
 		keys, _ := tx.UnsafeRange(keyBucketName, last, end, int64(s.cfg.CompactionBatchLimit))
+		//遍历 keys，不在 keep 里面的都会被删除
 		for _, key := range keys {
 			rev = bytesToRev(key)
 			if _, ok := keep[rev]; !ok {
+				//从bolt中删除
 				tx.UnsafeDelete(keyBucketName, key)
 				keyCompactions++
 			}
