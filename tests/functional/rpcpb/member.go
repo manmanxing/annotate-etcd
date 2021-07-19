@@ -162,7 +162,7 @@ func (m *Member) CheckCompact(rev int64) error {
 	return nil
 }
 
-// Defrag runs defragmentation on this member.
+// Defrag 对该成员运行碎片整理
 func (m *Member) Defrag() error {
 	cli, err := m.CreateEtcdClient()
 	if err != nil {

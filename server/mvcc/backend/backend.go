@@ -370,6 +370,7 @@ func (b *backend) defrag() error {
 
 	// Create a temporary file to ensure we start with a clean slate.
 	// Snapshotter.cleanupSnapdir cleans up any of these that are found during startup.
+	//创建临时文件
 	dir := filepath.Dir(b.db.Path())
 	temp, err := ioutil.TempFile(dir, "db.tmp.*")
 	if err != nil {
@@ -401,6 +402,7 @@ func (b *backend) defrag() error {
 		)
 	}
 	// gofail: var defragBeforeCopy struct{}
+	//将旧的db数据复制到新的db中
 	err = defragdb(b.db, tmpdb, defragLimit)
 	if err != nil {
 		tmpdb.Close()
@@ -419,11 +421,12 @@ func (b *backend) defrag() error {
 		b.lg.Fatal("failed to close tmp database", zap.Error(err))
 	}
 	// gofail: var defragBeforeRename struct{}
+	//重命名
 	err = os.Rename(tdbp, dbp)
 	if err != nil {
 		b.lg.Fatal("failed to rename tmp database", zap.Error(err))
 	}
-
+	//设置新 db 的属性
 	b.db, err = bolt.Open(dbp, 0600, boltOpenOptions)
 	if err != nil {
 		b.lg.Fatal("failed to open database", zap.String("path", dbp), zap.Error(err))

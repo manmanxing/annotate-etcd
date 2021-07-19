@@ -729,6 +729,7 @@ func (clus *Cluster) checkCompact(rev int64) error {
 }
 
 func (clus *Cluster) defrag() error {
+	//循环每个集群成员，对每个集群执行碎片整理
 	for _, m := range clus.Members {
 		if err := m.Defrag(); err != nil {
 			clus.lg.Warn(
