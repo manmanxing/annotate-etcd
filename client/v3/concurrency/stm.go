@@ -85,9 +85,11 @@ func WithPrefetch(keys ...string) stmOption {
 	return func(so *stmOptions) { so.prefetch = append(so.prefetch, keys...) }
 }
 
+// apply: 业务逻辑实现
 // NewSTM initiates a new STM instance, using serializable snapshot isolation by default.
 func NewSTM(c *v3.Client, apply func(STM) error, so ...stmOption) (*v3.TxnResponse, error) {
 	opts := &stmOptions{ctx: c.Ctx()}
+	//应用配置选项
 	for _, f := range so {
 		f(opts)
 	}
@@ -98,11 +100,15 @@ func NewSTM(c *v3.Client, apply func(STM) error, so ...stmOption) (*v3.TxnRespon
 			return f(s)
 		}
 	}
+	//mkSTM 根据不同的隔离级别创建不同的stm实例
+	//runSTM 根据创建的 stm 实例与业务逻辑实现开始运行
 	return runSTM(mkSTM(c, opts), apply)
 }
 
+//mkSTM 根据不同的隔离级别创建不同的stm实例
 func mkSTM(c *v3.Client, opts *stmOptions) STM {
 	switch opts.iso {
+	//可序列化快照
 	case SerializableSnapshot:
 		s := &stmSerializable{
 			stm:      stm{client: c, ctx: opts.ctx},
@@ -112,6 +118,7 @@ func mkSTM(c *v3.Client, opts *stmOptions) STM {
 			return append(s.rset.cmps(), s.wset.cmps(s.rset.first()+1)...)
 		}
 		return s
+	//可序列化
 	case Serializable:
 		s := &stmSerializable{
 			stm:      stm{client: c, ctx: opts.ctx},
@@ -119,10 +126,12 @@ func mkSTM(c *v3.Client, opts *stmOptions) STM {
 		}
 		s.conflicts = func() []v3.Cmp { return s.rset.cmps() }
 		return s
+	//可重复度
 	case RepeatableReads:
 		s := &stm{client: c, ctx: opts.ctx, getOpts: []v3.OpOption{v3.WithSerializable()}}
 		s.conflicts = func() []v3.Cmp { return s.rset.cmps() }
 		return s
+	//读已提交
 	case ReadCommitted:
 		s := &stm{client: c, ctx: opts.ctx, getOpts: []v3.OpOption{v3.WithSerializable()}}
 		s.conflicts = func() []v3.Cmp { return nil }
@@ -139,44 +148,53 @@ type stmResponse struct {
 
 func runSTM(s STM, apply func(STM) error) (*v3.TxnResponse, error) {
 	outc := make(chan stmResponse, 1)
+	//异步处理
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				e, ok := r.(stmError)
 				if !ok {
 					// client apply panicked
+					// 如果不是 stmError 类型的错误，继续将panic往上报
 					panic(r)
 				}
 				outc <- stmResponse{nil, e.err}
 			}
 		}()
 		var out stmResponse
+		//因为有可能产生冲突，所以需要 for 循环去不断重试。
 		for {
+			//初始化 rset，wset
 			s.reset()
+			//执行业务逻辑，如果出错就退出循环
 			if out.err = apply(s); out.err != nil {
 				break
 			}
+			//尝试提交事务，如果提交有返回，就退出循环
+			//提交分两种实现：stm 与 stmSerializable
 			if out.resp = s.commit(); out.resp != nil {
 				break
 			}
 		}
 		outc <- out
 	}()
+	//等待异步执行的结果
 	r := <-outc
 	return r.resp, r.err
 }
 
-// stm implements repeatable-read software transactional memory over etcd
+// 通过 etcd 实现可重复读取的软事务
 type stm struct {
 	client *v3.Client
 	ctx    context.Context
-	// rset holds read key values and revisions
+	// rset 是一个 map，保存读键值对和 revisions
 	rset readSet
-	// wset holds overwritten keys and their values
+	// wset 是一个 map，保存覆盖的键及其值
 	wset writeSet
-	// getOpts are the opts used for gets
+	// getOpts 用于获取数据时设置 option, 不同的隔离级别会不一样
 	getOpts []v3.OpOption
-	// conflicts computes the current conflicts on the txn
+	// conflicts 计算 txn 上的当前冲突
+	//是最后生成的冲突检测 options, 不同的隔离级别会不一样
 	conflicts func() []v3.Cmp
 }
 
@@ -242,14 +260,19 @@ func (ws writeSet) puts() []v3.Op {
 	return puts
 }
 
+//stm 读取数据
 func (s *stm) Get(keys ...string) string {
+	//先去 wset 读取数据
 	if wv := s.wset.get(keys...); wv != nil {
 		return wv.val
 	}
+	//没有的话
 	return respToValue(s.fetch(keys...))
 }
 
+//stm 更新数据
 func (s *stm) Put(key, val string, opts ...v3.OpOption) {
+	//更新到 wset 中
 	s.wset[key] = stmPut{val, v3.OpPut(key, val, opts...)}
 }
 
@@ -262,7 +285,9 @@ func (s *stm) Rev(key string) int64 {
 	return 0
 }
 
+//stm的提交操作
 func (s *stm) commit() *v3.TxnResponse {
+	//如果没有发生冲突，就提交事务
 	txnresp, err := s.client.Txn(s.ctx).If(s.conflicts()...).Then(s.wset.puts()...).Commit()
 	if err != nil {
 		panic(stmError{err})
@@ -279,15 +304,19 @@ func (s *stm) fetch(keys ...string) *v3.GetResponse {
 	}
 	ops := make([]v3.Op, len(keys))
 	for i, key := range keys {
+		//去 rset 中获取
 		if resp, ok := s.rset[key]; ok {
 			return resp
 		}
+		//还没有的话，组装 op
 		ops[i] = v3.OpGet(key, s.getOpts...)
 	}
+	//从 etcd 中获取
 	txnresp, err := s.client.Txn(s.ctx).Then(ops...).Commit()
 	if err != nil {
 		panic(stmError{err})
 	}
+	//再更新到 rset 中
 	s.rset.add(keys, txnresp)
 	return (*v3.GetResponse)(txnresp.Responses[0].GetResponseRange())
 }
@@ -297,25 +326,32 @@ func (s *stm) reset() {
 	s.wset = make(map[string]stmPut)
 }
 
+//stmSerializable 包含 stm，再多一个预取 key的map prefetch
 type stmSerializable struct {
 	stm
 	prefetch map[string]*v3.GetResponse
 }
 
+//stmSerializable 读取数据
 func (s *stmSerializable) Get(keys ...string) string {
+	//先去 wset 读取
 	if wv := s.wset.get(keys...); wv != nil {
 		return wv.val
 	}
-	firstRead := len(s.rset) == 0
+	firstRead := len(s.rset) == 0 //标记 rset 长度是否为0
 	for _, key := range keys {
+		//没有读取到，再去 prefetch 遍历读取
+		//如果在 prefetch 中存在，就获取 resp，就删除该 key
+		//再保存到 rset 中
 		if resp, ok := s.prefetch[key]; ok {
 			delete(s.prefetch, key)
 			s.rset[key] = resp
 		}
 	}
+	//再调用 stm 的查询函数，这个时候 rset 已经存在该 key 了
 	resp := s.stm.fetch(keys...)
 	if firstRead {
-		// txn's base revision is defined by the first read
+		//第一次读 key 时需要将 Revision 保存到 getOpts 中，后续读取的数据版本都要小于这个版本。
 		s.getOpts = []v3.OpOption{
 			v3.WithRev(resp.Header.Revision),
 			v3.WithSerializable(),
@@ -339,10 +375,11 @@ func (s *stmSerializable) gets() ([]string, []v3.Op) {
 	return keys, ops
 }
 
+//stmSerializable 的提交操作
 func (s *stmSerializable) commit() *v3.TxnResponse {
 	keys, getops := s.gets()
 	txn := s.client.Txn(s.ctx).If(s.conflicts()...).Then(s.wset.puts()...)
-	// use Else to prefetch keys in case of conflict to save a round trip
+	//使用 Else 在发生冲突时，预取 key 以节省往返行程
 	txnresp, err := txn.Else(getops...).Commit()
 	if err != nil {
 		panic(stmError{err})
@@ -350,7 +387,7 @@ func (s *stmSerializable) commit() *v3.TxnResponse {
 	if txnresp.Succeeded {
 		return txnresp
 	}
-	// load prefetch with Else data
+	//事务提交不成功，就将预取的 key 保存到 rset 与 prefetch 中
 	s.rset.add(keys, txnresp)
 	s.prefetch = s.rset
 	s.getOpts = nil

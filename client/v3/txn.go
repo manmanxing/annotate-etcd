@@ -35,13 +35,11 @@ import (
 //	 ).Commit()
 //
 type Txn interface {
-	// If takes a list of comparison. If all comparisons passed in succeed,
-	// the operations passed into Then() will be executed. Or the operations
-	// passed into Else() will be executed.
+	// If 执行一系列的比较，所有的比较都成功通过，流程将会走到 Then 执行
+	// 否则将流转到 Else 中执行
 	If(cs ...Cmp) Txn
 
-	// Then takes a list of operations. The Ops list will be executed, if the
-	// comparisons passed in If() succeed.
+	//获取操作列表。如果在 If() 中传递的比较成功，将执行 Ops 列表。
 	Then(ops ...Op) Txn
 
 	// Else takes a list of operations. The Ops list will be executed, if the

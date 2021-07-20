@@ -216,7 +216,7 @@ func (op Op) isWrite() bool {
 	return op.t != tRange
 }
 
-// OpGet returns "get" operation based on given key and operation options.
+// OpGet 根据给定的键 key 和操作选项 opts 返回“get”操作。
 func OpGet(key string, opts ...OpOption) Op {
 	// WithPrefix and WithFromKey are not supported together
 	if IsOptsWithPrefix(opts) && IsOptsWithFromKey(opts) {

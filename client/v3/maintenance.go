@@ -40,13 +40,9 @@ type Maintenance interface {
 	// AlarmDisarm disarms a given alarm.
 	AlarmDisarm(ctx context.Context, m *AlarmMember) (*AlarmResponse, error)
 
-	// Defragment releases wasted space from internal fragmentation on a given etcd member.
-	// Defragment is only needed when deleting a large number of keys and want to reclaim
-	// the resources.
-	// Defragment is an expensive operation. User should avoid defragmenting multiple members
-	// at the same time.
-	// To defragment multiple members in the cluster, user need to call defragment multiple
-	// times with different endpoints.
+	//碎片整理 从给定 etcd 成员的内部碎片中释放浪费的空间。
+	//仅在删除大量 key 并希望回收资源时才需要进行碎片整理。碎片整理是一项昂贵的操作。用户应避免同时对多个成员进行碎片整理。
+	//要对集群中的多个成员进行碎片整理，用户需要使用不同的端点多次调用碎片整理。
 	Defragment(ctx context.Context, endpoint string) (*DefragmentResponse, error)
 
 	// Status gets the status of the endpoint.

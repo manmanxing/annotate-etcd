@@ -7282,7 +7282,7 @@ type MaintenanceClient interface {
 	Alarm(ctx context.Context, in *AlarmRequest, opts ...grpc.CallOption) (*AlarmResponse, error)
 	// Status gets the status of the member.
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
-	// Defragment defragments a member's backend database to recover storage space.
+	// Defragment 对成员的后端数据库进行碎片整理以恢复存储空间。
 	Defragment(ctx context.Context, in *DefragmentRequest, opts ...grpc.CallOption) (*DefragmentResponse, error)
 	// Hash computes the hash of whole backend keyspace,
 	// including key, lease, and other buckets in storage.
