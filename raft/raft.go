@@ -98,7 +98,7 @@ var globalRand = &lockedRand{
 // is because it's simpler to compare and fill in raft entries
 type CampaignType string
 
-// StateType represents the role of a node in a cluster.
+// StateType 代表一个节点在集群中的角色。
 type StateType uint64
 
 var stmap = [...]string{
@@ -112,9 +112,9 @@ func (st StateType) String() string {
 	return stmap[uint64(st)]
 }
 
-// Config contains the parameters to start a raft.
+// Config 主要用于配置参数的传递，在创建raft实例时需要的参数会通过Config实例传递进去
 type Config struct {
-	// ID is the identity of the local raft. ID cannot be 0.
+	// ID 当前节点的ID，不能是 0
 	ID uint64
 
 	// ElectionTick is the number of Node.Tick invocations that must pass between
@@ -123,21 +123,25 @@ type Config struct {
 	// candidate and start an election. ElectionTick must be greater than
 	// HeartbeatTick. We suggest ElectionTick = 10 * HeartbeatTick to avoid
 	// unnecessary leader switching.
+	// 用于初始化raft.electionTimeout，即逻辑时钟连续推进多少次后，就会触发Follower节点的状态切换及新一轮的Leader选举。
 	ElectionTick int
 	// HeartbeatTick is the number of Node.Tick invocations that must pass between
 	// heartbeats. That is, a leader sends heartbeat messages to maintain its
 	// leadership every HeartbeatTick ticks.
+	// 用于初始化raftheartbeatTimeout，即逻辑时钟连续推进多少次后，就触发Leader节点发送心跳消息。
 	HeartbeatTick int
 
 	// Storage is the storage for raft. raft generates entries and states to be
 	// stored in storage. raft reads the persisted entries and states out of
 	// Storage when it needs. raft reads out the previous state and configuration
 	// out of storage when restarting.
+	//当前节点保存raft日志记录使用的存储
 	Storage Storage
 	// Applied is the last applied index. It should only be set when restarting
 	// raft. raft will not return entries to the application smaller or equal to
 	// Applied. If Applied is unset when restarting, raft might return previous
 	// applied entries. This is a very application dependent configuration.
+	//当前已经应用的记录位置（己应用的最后一条Entry记录的索引值），该值在节点重启时需要设置，否则会重新应用己经应用过ntry记录。
 	Applied uint64
 
 	// MaxSizePerMsg limits the max byte size of each append message. Smaller
@@ -145,6 +149,7 @@ type Config struct {
 	// during normal operation). On the other side, it might affect the
 	// throughput during normal replication. Note: math.MaxUint64 for unlimited,
 	// 0 for at most one entry per message.
+	// 用于初始化raft.maxMsgSize字段，每条消息的最大字节数。
 	MaxSizePerMsg uint64
 	// MaxCommittedSizePerReady limits the size of the committed entries which
 	// can be applied.
@@ -159,6 +164,7 @@ type Config struct {
 	// has its own sending buffer over TCP/UDP. Setting MaxInflightMsgs to avoid
 	// overflowing that sending buffer. TODO (xiangli): feedback to application to
 	// limit the proposal rate?
+	// 用于初始化ra丘maxlnflight，即已经发送出去且未收到响应的最大消息个数。
 	MaxInflightMsgs int
 
 	// CheckQuorum specifies if the leader should check quorum activity. Leader
@@ -241,29 +247,36 @@ func (c *Config) validate() error {
 }
 
 type raft struct {
+	//当前节点在集群的id
 	id uint64
-
+	//当前的任期号
+	//如果Message的Term字段为0,则表示该消息是本地消息,例如，MsgHup、 MsgProp、 MsgReadlndex 等消息,都属于本地消息。
 	Term uint64
+	//当前任期中当前节点将选票投给了哪个节点，未投票时， 该字段为None。
 	Vote uint64
-
+	//
 	readStates []ReadState
 
-	// the log
+	//表示本地log，每个节点都会记录本地log
 	raftLog *raftLog
 
+	//单条 Message 最大的字节数
 	maxMsgSize         uint64
+	//
 	maxUncommittedSize uint64
-	// TODO(tbg): rename to trk.
+	//Leader 节点会记录集群中其他节点的日志复制情况(Nextlndex和Matchlndex）
 	prs tracker.ProgressTracker
 
+	//当前节点在集群中的角色，可选值分为StateFollower、StateCandidate、 StateLeader和StatePreCandidat巳四种状态。
 	state StateType
 
 	// isLearner is true if the local raft node is a learner.
 	isLearner bool
 
+	//缓存了当前节点等待发送的消息。
 	msgs []pb.Message
 
-	// the leader id
+	//当前集群中Leader节点的ID。
 	lead uint64
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
@@ -286,16 +299,20 @@ type raft struct {
 	// or candidate.
 	// number of ticks since it reached last electionTimeout or received a
 	// valid message from current leader when it is a follower.
+	//选举计时器的指针，其单位是逻辑时钟的刻度，逻辑时钟每推进一次，该字段值就会增加1。
 	electionElapsed int
 
 	// number of ticks since it reached last heartbeatTimeout.
 	// only leader keeps heartbeatElapsed.
+	//心跳计时器的指针，其单位也是逻辑时钟的刻度，逻辑时钟每推进一次，该字段值就会增加1 。
 	heartbeatElapsed int
 
 	checkQuorum bool
 	preVote     bool
 
+	//心跳超时时间，当heartbeatElapsed字段值到达该值时，就会触发Leader节点发送一条心跳消息。
 	heartbeatTimeout int
+	//选举超时时间，当electionE!apsed 宇段值到达该值时，就会触发新一轮的选举。
 	electionTimeout  int
 	// randomizedElectionTimeout is a random number between
 	// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
@@ -303,7 +320,14 @@ type raft struct {
 	randomizedElectionTimeout int
 	disableProposalForwarding bool
 
+	//当前节点推进逻辑时钟的函数。
+	//如果当前节点是Leader，则指向raft.tickHeartbeat（）函数
+	//如果当前节点是Follower 或是Candidate，则指向raft.tickElection（）函数。
 	tick func()
+	// 当前节点收到消息时的处理函数。
+	// 如果是Leader节点， 则该字段指向stepLeader（）函数
+	// 如果是Follower节点，则该字段指向stepFollower（）函数
+	// 如果是处于preVote阶段的节点或是Candidate节点，则该字段指向stepCandidate（）函数。
 	step stepFunc
 
 	logger Logger
@@ -315,10 +339,13 @@ type raft struct {
 	pendingReadIndexMessages []pb.Message
 }
 
+//raft 初始化
 func newRaft(c *Config) *raft {
+	//校验 config 字段属性是否合规，并且会初始化一些字段
 	if err := c.validate(); err != nil {
 		panic(err.Error())
 	}
+
 	raftlog := newLogWithSize(c.Storage, c.Logger, c.MaxCommittedSizePerReady)
 	hs, cs, err := c.Storage.InitialState()
 	if err != nil {
@@ -342,6 +369,9 @@ func newRaft(c *Config) *raft {
 		disableProposalForwarding: c.DisableProposalForwarding,
 	}
 
+	//初始化raft.prs字段，这里会根据集群中节点的ID，为每个节点初始化Progress实例
+	//在Progress中维护了对应节点的NextIndex值和Matchindex值， 以及一些其他的Follower节点信息
+	//注意:只有Leader节点的raft.prs字段是有效的
 	cfg, prs, err := confchange.Restore(confchange.Changer{
 		Tracker:   r.prs,
 		LastIndex: raftlog.lastIndex(),
@@ -351,12 +381,15 @@ func newRaft(c *Config) *raft {
 	}
 	assertConfStatesEquivalent(r.logger, cs, r.switchToConfig(cfg, prs))
 
+	//根据从Storage中获取的HardState，初始化raftLog.committed字段，以及raft.Term和Vote字段
 	if !IsEmptyHardState(hs) {
 		r.loadState(hs)
 	}
+	//
 	if c.Applied > 0 {
 		raftlog.appliedTo(c.Applied)
 	}
+	//当前节点切换成Follower状态
 	r.becomeFollower(r.Term, None)
 
 	var nodesStrs []string
@@ -618,6 +651,10 @@ func (r *raft) reset(term uint64) {
 	r.readOnly = newReadOnly(r.readOnly.option)
 }
 
+//设置待追加的Entry记录的Term值和Index值。
+//向当前节点的raftLog中追加Entry记录。
+//更新当前节点对应的Progress 实例。
+//尝试提交Entry记录， 即修改raftLog.committed字段的值。
 func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 	li := r.raftLog.lastIndex()
 	for i := range es {
@@ -636,12 +673,12 @@ func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 	// use latest "last" index after truncate/append
 	li = r.raftLog.append(es...)
 	r.prs.Progress[r.id].MaybeUpdate(li)
-	// Regardless of maybeCommit's return, our caller will call bcastAppend.
+	//如果该Entry记录己经复制到了半数以上的节点中，则在raft.maybeCommit（）方法中会尝试将其提交。
 	r.maybeCommit()
 	return true
 }
 
-// tickElection is run by followers and candidates after r.electionTimeout.
+// 当节点变成Follower状态之后，会周期性地调用raft.tickElection（）方法推进electionElapsed并检测是否超时
 func (r *raft) tickElection() {
 	r.electionElapsed++
 
@@ -677,6 +714,7 @@ func (r *raft) tickHeartbeat() {
 	}
 }
 
+//转换为 follower
 func (r *raft) becomeFollower(term uint64, lead uint64) {
 	r.step = stepFollower
 	r.reset(term)
@@ -686,6 +724,7 @@ func (r *raft) becomeFollower(term uint64, lead uint64) {
 	r.logger.Infof("%x became follower at term %d", r.id, r.Term)
 }
 
+//转换成 Candidate
 func (r *raft) becomeCandidate() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateLeader {
@@ -739,6 +778,7 @@ func (r *raft) becomeLeader() {
 	r.pendingConfIndex = r.raftLog.lastIndex()
 
 	emptyEnt := pb.Entry{Data: nil}
+	//向当前节点的raftLog中追加一条空的Entry记录
 	if !r.appendEntry(emptyEnt) {
 		// This won't happen because we just called reset() above.
 		r.logger.Panic("empty entry was dropped")
@@ -838,6 +878,9 @@ func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected 
 	return r.prs.TallyVotes()
 }
 
+//raft模块处理各类消息的入口
+//第一部分是根据Term值对消息进行分类处理
+//第二部分是根据消息的类型进行分类处理
 func (r *raft) Step(m pb.Message) error {
 	// Handle the message term, which may result in our stepping down to a follower.
 	switch {

@@ -16,16 +16,11 @@ package raft
 
 import pb "go.etcd.io/etcd/raft/v3/raftpb"
 
-// unstable.entries[i] has raft log position i+unstable.offset.
-// Note that unstable.offset may be less than the highest log
-// position in storage; this means that the next write to storage
-// might need to truncate the log before persisting unstable.entries.
+//维护所有的 Entry 记录
 type unstable struct {
-	// the incoming unstable snapshot, if any.
-	snapshot *pb.Snapshot
-	// all entries that have not yet been written to storage.
-	entries []pb.Entry
-	offset  uint64
+	snapshot *pb.Snapshot//快照数据，该快照数据也是未写入Storage中的。
+	entries []pb.Entry//用于保存未写入Storage中的Entry记录。
+	offset  uint64// entries 中的第一条Entry记录的索引值。
 
 	logger Logger
 }

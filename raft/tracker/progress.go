@@ -20,40 +20,19 @@ import (
 	"strings"
 )
 
-// Progress represents a follower’s progress in the view of the leader. Leader
-// maintains progresses of all followers, and sends entries to the follower
-// based on its progress.
-//
-// NB(tbg): Progress is basically a state machine whose transitions are mostly
-// strewn around `*raft.raft`. Additionally, some fields are only used when in a
-// certain State. All of this isn't ideal.
+//在raft模块中，每个Follower节点对应的Nextlndex值和Matchlndex值都封装在Progress实例中
 type Progress struct {
+	//Match 对应Follower节点当前己经成功复制的Entry记录的索引值。
+	//Next 对应Follower节点下一个待复制的Entry记录的索引值。
 	Match, Next uint64
-	// State defines how the leader should interact with the follower.
-	//
-	// When in StateProbe, leader sends at most one replication message
-	// per heartbeat interval. It also probes actual progress of the follower.
-	//
-	// When in StateReplicate, leader optimistically increases next
-	// to the latest entry sent after sending replication message. This is
-	// an optimized state for fast replicating log entries to the follower.
-	//
-	// When in StateSnapshot, leader should have sent out snapshot
-	// before and stops sending any replication message.
+
+	//对应Follower节点的复制状态
 	State StateType
 
-	// PendingSnapshot is used in StateSnapshot.
-	// If there is a pending snapshot, the pendingSnapshot will be set to the
-	// index of the snapshot. If pendingSnapshot is set, the replication process of
-	// this Progress will be paused. raft will not resend snapshot until the pending one
-	// is reported to be failed.
+	//当前正在发送的快照数据信息。
 	PendingSnapshot uint64
 
-	// RecentActive is true if the progress is recently active. Receiving any messages
-	// from the corresponding follower indicates the progress is active.
-	// RecentActive can be reset to false after an election timeout.
-	//
-	// TODO(tbg): the leader should always have this set to true.
+	//从当前Leader节点的角度来看，该Progress实例对应的Follower节点是否存活。
 	RecentActive bool
 
 	// ProbeSent is used while this follower is in StateProbe. When ProbeSent is
@@ -61,18 +40,7 @@ type Progress struct {
 	// ProbeSent is reset. See ProbeAcked() and IsPaused().
 	ProbeSent bool
 
-	// Inflights is a sliding window for the inflight messages.
-	// Each inflight message contains one or more log entries.
-	// The max number of entries per message is defined in raft config as MaxSizePerMsg.
-	// Thus inflight effectively limits both the number of inflight messages
-	// and the bandwidth each Progress can use.
-	// When inflights is Full, no more message should be sent.
-	// When a leader sends out a message, the index of the last
-	// entry should be added to inflights. The index MUST be added
-	// into inflights in order.
-	// When a leader receives a reply, the previous inflights should
-	// be freed by calling inflights.FreeLE with the index of the last
-	// received entry.
+	// 记录了己经发送出去但未收到响应的消息信息。
 	Inflights *Inflights
 
 	// IsLearner is true if this progress is tracked for a learner.

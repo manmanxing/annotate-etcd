@@ -263,10 +263,16 @@ func (ConfChangeType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_b042552c306ae59b, []int{3}
 }
 
+//节点之间传递的是消息（Message），每条消息中可以携带多条Entry记录，每条Entry记录对应一个独立的操作。
+//区别于 ETCD的 WAL 日志，两者并非完全等价
 type Entry struct {
+	//该Entry所在的任期号
 	Term  uint64    `protobuf:"varint,2,opt,name=Term" json:"Term"`
+	//该Entry对应的索引号
 	Index uint64    `protobuf:"varint,3,opt,name=Index" json:"Index"`
+	//该Entry记录的类型。 该字段有两个可选项：一个是Entry Normal，表示普通的数据操作；另一个是EntryConfChange，表示集群的变更操作
 	Type  EntryType `protobuf:"varint,1,opt,name=Type,enum=raftpb.EntryType" json:"Type"`
+	//具体操作使用的数据
 	Data  []byte    `protobuf:"bytes,4,opt,name=Data" json:"Data,omitempty"`
 }
 
@@ -380,22 +386,31 @@ func (m *Snapshot) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Snapshot proto.InternalMessageInfo
 
+//一个 Message 包含多个 Entry
+//是所有消息的抽象，包含了各种类型消息所需要的字段
 type Message struct {
+	//消息的类型，raft 就是通过该字段区分不同的消息并进行分类处理的
 	Type MessageType `protobuf:"varint,1,opt,name=type,enum=raftpb.MessageType" json:"type"`
+	//消息的目标节点id
 	To   uint64      `protobuf:"varint,2,opt,name=to" json:"to"`
+	//发送消息的节点id
 	From uint64      `protobuf:"varint,3,opt,name=from" json:"from"`
+	//发送消息的节点的Term值。 如果Term值为0，则为本地消息
 	Term uint64      `protobuf:"varint,4,opt,name=term" json:"term"`
-	// logTerm is generally used for appending Raft logs to followers. For example,
-	// (type=MsgApp,index=100,logTerm=5) means leader appends entries starting at
-	// index=101, and the term of entry at index 100 is 5.
-	// (type=MsgAppResp,reject=true,index=100,logTerm=5) means follower rejects some
-	// entries from its leader as it already has an entry with term 5 at index 100.
+	//该消息携带的第一条Entry记录的Term值
 	LogTerm    uint64   `protobuf:"varint,5,opt,name=logTerm" json:"logTerm"`
+	//记录索引值，该索引值的具体含义与消息的类型相关。
+	//例如，MsgApp消息的Index宇段保存了其携带的Entry记录（即Entries字段）中前一条记录的Index值，
+	//而MsgAppResp消息的Index字段则是Follower节点提示Leader节点下次从哪个位置开始发送Entry记录。
 	Index      uint64   `protobuf:"varint,6,opt,name=index" json:"index"`
+	//Entry 记录
 	Entries    []Entry  `protobuf:"bytes,7,rep,name=entries" json:"entries"`
+	//消息发送节点的提交位置（commitlndex）。
 	Commit     uint64   `protobuf:"varint,8,opt,name=commit" json:"commit"`
 	Snapshot   Snapshot `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot"`
+	//在传输快照时，该字段保存了快照数据。
 	Reject     bool     `protobuf:"varint,10,opt,name=reject" json:"reject"`
+	//在Follower节点拒绝Leader节点的消息之后，会在该字段记录一个Entry索引值供Leader节点判断
 	RejectHint uint64   `protobuf:"varint,11,opt,name=rejectHint" json:"rejectHint"`
 	Context    []byte   `protobuf:"bytes,12,opt,name=context" json:"context,omitempty"`
 }

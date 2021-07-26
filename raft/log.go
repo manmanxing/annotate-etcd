@@ -21,20 +21,17 @@ import (
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
 )
 
+//依赖于 Storage 接口和 unstable 结构体
+//使用 raftLog 结构来管理节点上的日志
 type raftLog struct {
-	// storage contains all stable entries since the last snapshot.
+	//实际上就是前面介绍的 MemoryStorage 实例，其中存储了快照数据及该快照之后的Entry记录。
 	storage Storage
-
-	// unstable contains all unstable entries and snapshot.
-	// they will be saved into storage.
+	//用于存储未写入Storage的快照数据及Entry记录
 	unstable unstable
-
-	// committed is the highest log position that is known to be in
-	// stable storage on a quorum of nodes.
+	//己提交的位置，即己提交的Entry记录中最大的索引值。
 	committed uint64
-	// applied is the highest log position that the application has
-	// been instructed to apply to its state machine.
-	// Invariant: applied <= committed
+	//己应用的位置，即己应用的Entry记录中最大的索引值。
+	//其中committed和applied之间始终满足committed<=applied这个不等式关系。
 	applied uint64
 
 	logger Logger
