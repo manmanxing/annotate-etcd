@@ -35,9 +35,7 @@ type Progress struct {
 	//从当前Leader节点的角度来看，该Progress实例对应的Follower节点是否存活。
 	RecentActive bool
 
-	// ProbeSent is used while this follower is in StateProbe. When ProbeSent is
-	// true, raft should pause sending replication message to this peer until
-	// ProbeSent is reset. See ProbeAcked() and IsPaused().
+	//当 ProbeSent 为 true 时，raft 应暂停向该对等方发送复制消息，直到 ProbeSent 被重置
 	ProbeSent bool
 
 	// 记录了己经发送出去但未收到响应的消息信息。

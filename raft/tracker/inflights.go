@@ -117,7 +117,7 @@ func (in *Inflights) FreeLE(to uint64) {
 // inflight.
 func (in *Inflights) FreeFirstOne() { in.FreeLE(in.buffer[in.start]) }
 
-// Full returns true if no more messages can be sent at the moment.
+// Full 如果此时不能发送更多消息，则返回 true
 func (in *Inflights) Full() bool {
 	return in.count == in.size
 }
