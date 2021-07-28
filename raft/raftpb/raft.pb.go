@@ -407,8 +407,9 @@ type Message struct {
 	Entries    []Entry  `protobuf:"bytes,7,rep,name=entries" json:"entries"`
 	//消息发送节点的提交位置（commitlndex）。
 	Commit     uint64   `protobuf:"varint,8,opt,name=commit" json:"commit"`
-	Snapshot   Snapshot `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot"`
 	//在传输快照时，该字段保存了快照数据。
+	Snapshot   Snapshot `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot"`
+	//投票结果，为 true 表示赞同票
 	Reject     bool     `protobuf:"varint,10,opt,name=reject" json:"reject"`
 	//在Follower节点拒绝Leader节点的消息之后，会在该字段记录一个Entry索引值供Leader节点判断
 	RejectHint uint64   `protobuf:"varint,11,opt,name=rejectHint" json:"rejectHint"`
