@@ -16,17 +16,16 @@ package raft
 
 import pb "go.etcd.io/etcd/raft/v3/raftpb"
 
-//维护所有的 Entry 记录
+//维护所有的 Entry 记录，最终这些记录会流入到 Storage 里
 type unstable struct {
-	snapshot *pb.Snapshot//快照数据，该快照数据也是未写入Storage中的。
-	entries []pb.Entry//用于保存未写入Storage中的Entry记录。
-	offset  uint64// entries 中的第一条Entry记录的索引值。
+	snapshot *pb.Snapshot//快照数据，该快照数据也是未写入 Storage 中的。
+	entries []pb.Entry//用于保存未写入 Storage 中的Entry记录。
+	offset  uint64// entries 中的第一条 Entry 记录的索引值，是 Storage 中最后一条 Entry 的索引值 + 1
 
 	logger Logger
 }
 
-// maybeFirstIndex returns the index of the first possible entry in entries
-// if it has a snapshot.
+//会尝试获取 unstable 的第一条 Entry 记录的索引值，
 func (u *unstable) maybeFirstIndex() (uint64, bool) {
 	if u.snapshot != nil {
 		return u.snapshot.Metadata.Index + 1, true
@@ -34,8 +33,7 @@ func (u *unstable) maybeFirstIndex() (uint64, bool) {
 	return 0, false
 }
 
-// maybeLastIndex returns the last index if it has at least one
-// unstable entry or snapshot.
+// 会尝试获取 unstable 的最后一条 Entry记录的索引值
 func (u *unstable) maybeLastIndex() (uint64, bool) {
 	if l := len(u.entries); l != 0 {
 		return u.offset + uint64(l) - 1, true
@@ -46,8 +44,7 @@ func (u *unstable) maybeLastIndex() (uint64, bool) {
 	return 0, false
 }
 
-// maybeTerm returns the term of the entry at index i, if there
-// is any.
+// 尝试获取指定 Entry 记录的 Term值
 func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
 	if i < u.offset {
 		if u.snapshot != nil && u.snapshot.Metadata.Index == i {
@@ -67,7 +64,10 @@ func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
 	return u.entries[i-u.offset].Term, true
 }
 
+//当 unstable.entries 中的 Entry 记录己经被写入 Storage 之后
+//会调用 unstable.stableTo()方法 清除 entries 中对应的 Entry 记录
 func (u *unstable) stableTo(i, t uint64) {
+	//首先尝试去查询一次，查询不到直接返回
 	gt, ok := u.maybeTerm(i)
 	if !ok {
 		return
@@ -78,6 +78,8 @@ func (u *unstable) stableTo(i, t uint64) {
 	if gt == t && i >= u.offset {
 		u.entries = u.entries[i+1-u.offset:]
 		u.offset = i + 1
+		//随着多次追加日志和截断日志的操作， unstable.entires 底层的数组会越来越大
+		//shrinkEntriesArray 方法会在底层数组长度超过实际占用的两倍时，对底层数组且进行缩减
 		u.shrinkEntriesArray()
 	}
 }
@@ -101,6 +103,7 @@ func (u *unstable) shrinkEntriesArray() {
 	}
 }
 
+//当 unstable.snapshot字段 指向 的快照被写入 Storage之后 ，会调用 unstable.stableSnapTo() 方法将 snapshot 字段清空
 func (u *unstable) stableSnapTo(i uint64) {
 	if u.snapshot != nil && u.snapshot.Metadata.Index == i {
 		u.snapshot = nil

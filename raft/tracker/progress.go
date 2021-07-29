@@ -38,7 +38,7 @@ type Progress struct {
 	//当 ProbeSent 为 true 时，raft 应暂停向该对等方发送复制消息，直到 ProbeSent 被重置
 	ProbeSent bool
 
-	// 记录了己经发送出去但未收到响应的消息信息。
+	//限制了己经发送出去但未收到响应的  MsgApp 消息个数
 	Inflights *Inflights
 
 	// IsLearner is true if this progress is tracked for a learner.

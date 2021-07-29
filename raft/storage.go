@@ -37,46 +37,38 @@ var ErrUnavailable = errors.New("requested entry at index is unavailable")
 // snapshot is temporarily unavailable.
 var ErrSnapshotTemporarilyUnavailable = errors.New("snapshot is temporarily unavailable")
 
-// Storage 是一个可以由应用程序实现以从存储中检索日志条目的接口。
+// Storage 存储当前节点接收到的 Entry记录
+// 可以自定义实现该接口，来实现不同的存储方式
 type Storage interface {
-	// TODO(tbg): split this into two interfaces, LogStorage and StateStorage.
-
-	// InitialState returns the saved HardState and ConfState information.
+	// 返回 Storage 中记录的状态信息，返回的是 HardState 实例和 ConfState 实例
 	InitialState() (pb.HardState, pb.ConfState, error)
-	// Entries returns a slice of log entries in the range [lo,hi).
-	// MaxSize limits the total size of the log entries returned, but
-	// Entries returns at least one entry if any.
+
+	//在 Storage 中记录了当前节点的所有 Entry 记录， Entries 方法返回指定范固的 Entry 记录([ lo, hi)) ,
+	//第三个参数{maxSize)限定了返回的 Entry 集合的字节数上限
 	Entries(lo, hi, maxSize uint64) ([]pb.Entry, error)
-	// Term returns the term of entry i, which must be in the range
-	// [FirstIndex()-1, LastIndex()]. The term of the entry before
-	// FirstIndex is retained for matching purposes even though the
-	// rest of that entry may not be available.
+
+	//查询指定 Index 对应的 Entry 的 Term值
 	Term(i uint64) (uint64, error)
-	// LastIndex returns the index of the last entry in the log.
+
+	// LastIndex 返回日志中最后一个条目的索引。
 	LastIndex() (uint64, error)
-	// FirstIndex returns the index of the first log entry that is
-	// possibly available via Entries (older entries have been incorporated
-	// into the latest Snapshot; if storage only contains the dummy entry the
-	// first log entry is not available).
+
+	// FirstIndex 返回Storage中记录的第一条Entry的索号值(Index)
+	// 在该Entry之前的所有Entry都已经被包含进了 最近的一次 Snapshot 中
 	FirstIndex() (uint64, error)
-	// Snapshot returns the most recent snapshot.
-	// If snapshot is temporarily unavailable, it should return ErrSnapshotTemporarilyUnavailable,
-	// so raft state machine could know that Storage needs some time to prepare
-	// snapshot and call Snapshot later.
+
+	// Snapshot 返回最近一次生成的快照数据
 	Snapshot() (pb.Snapshot, error)
 }
 
-// MemoryStorage implements the Storage interface backed by an
-// in-memory array.
+// MemoryStorage 通过内存数组 实现 Storage 接口
 type MemoryStorage struct {
-	// Protects access to all fields. Most methods of MemoryStorage are
-	// run on the raft goroutine, but Append() is run on an application
-	// goroutine.
 	sync.Mutex
 
 	hardState pb.HardState
+
 	snapshot  pb.Snapshot
-	// ents[i] has raft log position i+snapshot.Metadata.Index
+
 	ents []pb.Entry
 }
 
@@ -164,20 +156,22 @@ func (ms *MemoryStorage) Snapshot() (pb.Snapshot, error) {
 	return ms.snapshot, nil
 }
 
-// ApplySnapshot overwrites the contents of this Storage object with
-// those of the given snapshot.
+// ApplySnapshot 将 Snapshot 实例保存到 MemoryStorage 中
 func (ms *MemoryStorage) ApplySnapshot(snap pb.Snapshot) error {
 	ms.Lock()
 	defer ms.Unlock()
 
-	//handle check for old snapshot being applied
+	//通过快照的元数据比较当前 MemoryStorage 中记录的 Snapshot 与待处理的 Snapshot 数据的新旧程度
 	msIndex := ms.snapshot.Metadata.Index
 	snapIndex := snap.Metadata.Index
 	if msIndex >= snapIndex {
+		//就是比较两个 Snapshot 中的最后一条 index 值
+		//如果待处理 Snapshot 数据比较旧，直接抛出异常
 		return ErrSnapOutOfDate
 	}
 
-	ms.snapshot = snap
+	ms.snapshot = snap//更新 MemoryStorage.snapshot 字段
+	//重置 MemoryStorage.ents 字段
 	ms.ents = []pb.Entry{{Term: snap.Metadata.Term, Index: snap.Metadata.Index}}
 	return nil
 }
@@ -232,10 +226,8 @@ func (ms *MemoryStorage) Compact(compactIndex uint64) error {
 	return nil
 }
 
-// Append the new entries to storage.
-// TODO (xiangli): ensure the entries are continuous and
-// entries[0].Index > ms.entries[0].Index
-// 追加记录到存储中
+
+// 向 MemoryStorage 中追加 Entry 记录
 func (ms *MemoryStorage) Append(entries []pb.Entry) error {
 	if len(entries) == 0 {
 		return nil

@@ -54,6 +54,7 @@ func newLogWithSize(storage Storage, logger Logger, maxNextEntsSize uint64) *raf
 	if storage == nil {
 		log.Panic("storage must not be nil")
 	}
+	//初始化 raftLog
 	log := &raftLog{
 		storage:         storage,
 		logger:          logger,
@@ -69,7 +70,7 @@ func newLogWithSize(storage Storage, logger Logger, maxNextEntsSize uint64) *raf
 	}
 	log.unstable.offset = lastIndex + 1
 	log.unstable.logger = logger
-	// Initialize our committed and applied pointers to the time of the last compaction.
+	//初始化 committed and applied 为 最后一个 压缩的索引下标
 	log.committed = firstIndex - 1
 	log.applied = firstIndex - 1
 
@@ -80,8 +81,10 @@ func (l *raftLog) String() string {
 	return fmt.Sprintf("committed=%d, applied=%d, unstable.offset=%d, len(unstable.Entries)=%d", l.committed, l.applied, l.unstable.offset, len(l.unstable.entries))
 }
 
-// maybeAppend returns (0, false) if the entries cannot be appended. Otherwise,
-// it returns (last index of new entries, true).
+//当 Follower 节点或 Candidate 节点需要向 raftLog 中追加 Entry 记录时 ，
+//会通过 raft.handleAppendEntries 方法调用 raftLog.maybeAppend 方法完成追加 Entry 记录的功能。
+//如果不能追加，则返回  (0, false)
+//如果追加成功，则返回  (entries 的最后一条索引, true)
 func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry) (lastnewi uint64, ok bool) {
 	if l.matchTerm(index, logTerm) {
 		lastnewi = index + uint64(len(ents))

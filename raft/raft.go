@@ -117,38 +117,18 @@ type Config struct {
 	// ID 当前节点的ID，不能是 0
 	ID uint64
 
-	// ElectionTick is the number of Node.Tick invocations that must pass between
-	// elections. That is, if a follower does not receive any message from the
-	// leader of current term before ElectionTick has elapsed, it will become
-	// candidate and start an election. ElectionTick must be greater than
-	// HeartbeatTick. We suggest ElectionTick = 10 * HeartbeatTick to avoid
-	// unnecessary leader switching.
 	// 用于初始化raft.electionTimeout，即逻辑时钟连续推进多少次后，就会触发Follower节点的状态切换及新一轮的Leader选举。
 	ElectionTick int
-	// HeartbeatTick is the number of Node.Tick invocations that must pass between
-	// heartbeats. That is, a leader sends heartbeat messages to maintain its
-	// leadership every HeartbeatTick ticks.
+
 	// 用于初始化raftheartbeatTimeout，即逻辑时钟连续推进多少次后，就触发Leader节点发送心跳消息。
 	HeartbeatTick int
 
-	// Storage is the storage for raft. raft generates entries and states to be
-	// stored in storage. raft reads the persisted entries and states out of
-	// Storage when it needs. raft reads out the previous state and configuration
-	// out of storage when restarting.
 	//当前节点保存raft日志记录使用的存储
 	Storage Storage
-	// Applied is the last applied index. It should only be set when restarting
-	// raft. raft will not return entries to the application smaller or equal to
-	// Applied. If Applied is unset when restarting, raft might return previous
-	// applied entries. This is a very application dependent configuration.
+
 	//当前已经应用的记录位置（己应用的最后一条Entry记录的索引值），该值在节点重启时需要设置，否则会重新应用己经应用过ntry记录。
 	Applied uint64
 
-	// MaxSizePerMsg limits the max byte size of each append message. Smaller
-	// value lowers the raft recovery cost(initial probing and message lost
-	// during normal operation). On the other side, it might affect the
-	// throughput during normal replication. Note: math.MaxUint64 for unlimited,
-	// 0 for at most one entry per message.
 	// 用于初始化raft.maxMsgSize字段，每条消息的最大字节数。
 	MaxSizePerMsg uint64
 	// MaxCommittedSizePerReady limits the size of the committed entries which
@@ -159,21 +139,13 @@ type Config struct {
 	// limit is exceeded, proposals will begin to return ErrProposalDropped
 	// errors. Note: 0 for no limit.
 	MaxUncommittedEntriesSize uint64
-	// MaxInflightMsgs limits the max number of in-flight append messages during
-	// optimistic replication phase. The application transportation layer usually
-	// has its own sending buffer over TCP/UDP. Setting MaxInflightMsgs to avoid
-	// overflowing that sending buffer. TODO (xiangli): feedback to application to
-	// limit the proposal rate?
-	// 用于初始化ra丘maxlnflight，即已经发送出去且未收到响应的最大消息个数。
+
+	// 用于初始化maxlnflight，即已经发送出去且未收到响应的最大消息个数。
 	MaxInflightMsgs int
 
-	// CheckQuorum specifies if the leader should check quorum activity. Leader
-	// steps down when quorum is not active for an electionTimeout.
+	//用于是否开启 CheckQuorum 机制
 	CheckQuorum bool
-
-	// PreVote enables the Pre-Vote algorithm described in raft thesis section
-	// 9.6. This prevents disruption when a node that has been partitioned away
-	// rejoins the cluster.
+	//用于是否开启 PreVote 机制
 	PreVote bool
 
 	// ReadOnlyOption specifies how the read only request is processed.
@@ -187,6 +159,7 @@ type Config struct {
 	// should (clock can move backward/pause without any bound). ReadIndex is not safe
 	// in that case.
 	// CheckQuorum MUST be enabled if ReadOnlyOption is ReadOnlyLeaseBased.
+	// 与只读请求的处理相关
 	ReadOnlyOption ReadOnlyOption
 
 	// Logger is the logger used for raft log. For multinode which can host
@@ -254,7 +227,7 @@ type raft struct {
 	Term uint64
 	//当前任期中当前节点将选票投给了哪个节点，未投票时， 该字段为None。
 	Vote uint64
-	//
+	//与只读请求相关
 	readStates []ReadState
 
 	//表示本地log，每个节点都会记录本地log
@@ -307,16 +280,23 @@ type raft struct {
 	//心跳计时器的指针，其单位也是逻辑时钟的刻度，逻辑时钟每推进一次，该字段值就会增加1 。
 	heartbeatElapsed int
 
+	//在发生网络分区时，旧的Leader由于不知道新Leader的存在，旧Leader依然会接收客户端的请求，却无法向客户端返回响应；
+	//CheckQuorum 机制的意思是: 每隔一段时间， Leader节点会尝试连接集群中的其他节点(发送心跳消息)
+	//如果发现自己可以连接到节点个数 没有超过半数(即没有收到足够的心跳响应)，则主动切换成 Follower状态。
+	//这样就会让旧的Leader节点知道自己已经过期，减少客户端请求超时现象发生。
 	checkQuorum bool
+
+	//preVote 机制的意思是：在正式发起选举前，会先进行一次征询其余节点是否参与选举的过程，防止网络分区现象导致无意义的选举
 	preVote     bool
 
 	//心跳超时时间，当heartbeatElapsed字段值到达该值时，就会触发Leader节点发送一条心跳消息。
 	heartbeatTimeout int
+
 	//选举超时时间，当electionE!apsed 宇段值到达该值时，就会触发新一轮的选举。
 	electionTimeout int
-	// randomizedElectionTimeout is a random number between
-	// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
-	// when raft changes its state to follower or candidate.
+
+	//是[electiontimeout, 2 * electiontimeout - 1]的随机值
+	//也是选举计时器的上限，当 electionElapsed超过该值时即为超时。
 	randomizedElectionTimeout int
 	disableProposalForwarding bool
 

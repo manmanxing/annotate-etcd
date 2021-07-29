@@ -14,11 +14,8 @@
 
 package tracker
 
-// Inflights limits the number of MsgApp (represented by the largest index
-// contained within) sent to followers but not yet acknowledged by them. Callers
-// use Full() to check whether more messages can be sent, call Add() whenever
-// they are sending a new append, and release "quota" via FreeLE() whenever an
-// ack is received.
+//Inflights 限制了己经发送出去但未收到响应的  MsgApp 消息个数
+//如果 count == size，则暂停当前节点的消息发送， 这是为了防止集群中的某个节点不断发送消息，引起网络阻塞或是压垮其他节点 ， 从 而影响其他节点的正常运行。
 type Inflights struct {
 	// the starting index in the buffer
 	start int
@@ -117,7 +114,7 @@ func (in *Inflights) FreeLE(to uint64) {
 // inflight.
 func (in *Inflights) FreeFirstOne() { in.FreeLE(in.buffer[in.start]) }
 
-// Full 如果此时不能发送更多消息，则返回 true
+//使用 Full() 检查是否可以发送更多消息
 func (in *Inflights) Full() bool {
 	return in.count == in.size
 }

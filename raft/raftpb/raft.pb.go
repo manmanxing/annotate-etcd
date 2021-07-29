@@ -450,8 +450,11 @@ func (m *Message) XXX_DiscardUnknown() {
 var xxx_messageInfo_Message proto.InternalMessageInfo
 
 type HardState struct {
+	//当前任期号
 	Term   uint64 `protobuf:"varint,1,opt,name=term" json:"term"`
+	//当前节点在该任期中将选票投给了哪个节点
 	Vote   uint64 `protobuf:"varint,2,opt,name=vote" json:"vote"`
+	//最后一条己提交记录的索引位
 	Commit uint64 `protobuf:"varint,3,opt,name=commit" json:"commit"`
 }
 
@@ -488,6 +491,8 @@ func (m *HardState) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_HardState proto.InternalMessageInfo
 
+
+//当前集群中所有节点的id
 type ConfState struct {
 	// The voters in the incoming config. (If the configuration is not joint,
 	// then the outgoing config is empty).
