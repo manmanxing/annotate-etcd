@@ -70,7 +70,7 @@ func newLogWithSize(storage Storage, logger Logger, maxNextEntsSize uint64) *raf
 	}
 	log.unstable.offset = lastIndex + 1
 	log.unstable.logger = logger
-	//初始化 committed and applied 为 最后一个 压缩的索引下标
+	//初始化 committed and applied 为 最后一个快照的索引下标
 	log.committed = firstIndex - 1
 	log.applied = firstIndex - 1
 
@@ -86,17 +86,21 @@ func (l *raftLog) String() string {
 //如果不能追加，则返回  (0, false)
 //如果追加成功，则返回  (entries 的最后一条索引, true)
 func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry) (lastnewi uint64, ok bool) {
+	//首先会校验 index索引下对应的 Entry 记录的 Term 值 与 logTerm 是否相等
 	if l.matchTerm(index, logTerm) {
 		lastnewi = index + uint64(len(ents))
+		//检查冲突，根据返回的 ci 判断是否冲突
 		ci := l.findConflict(ents)
 		switch {
-		case ci == 0:
-		case ci <= l.committed:
+		case ci == 0://没有冲突
+		case ci <= l.committed://发生冲突，且冲突的位置是已提交的记录，则输出日志，终止程序
 			l.logger.Panicf("entry %d conflict with committed entry [committed(%d)]", ci, l.committed)
 		default:
+			//发生冲突，且冲突的位置是未提交的记录，则将 ents 中未发生冲突的部分 追加到 unstable 里
 			offset := index + 1
 			l.append(ents[ci-offset:]...)
 		}
+		//取committed, lastnewi 中的最小值，更新到 raftLog 的 committed
 		l.commitTo(min(committed, lastnewi))
 		return lastnewi, true
 	}
@@ -110,20 +114,14 @@ func (l *raftLog) append(ents ...pb.Entry) uint64 {
 	if after := ents[0].Index - 1; after < l.committed {
 		l.logger.Panicf("after(%d) is out of range [committed(%d)]", after, l.committed)
 	}
+	//将 ents 追加到 unstable 里
 	l.unstable.truncateAndAppend(ents)
 	return l.lastIndex()
 }
 
-// findConflict finds the index of the conflict.
-// It returns the first pair of conflicting entries between the existing
-// entries and the given entries, if there are any.
-// If there is no conflicting entries, and the existing entries contains
-// all the given entries, zero will be returned.
-// If there is no conflicting entries, but the given entries contains new
-// entries, the index of the first new entry will be returned.
-// An entry is considered to be conflicting if it has the same index but
-// a different term.
-// The index of the given entries MUST be continuously increasing.
+//遍历待追加的 Entry 集合，查找是否与 raftLog 中己有的 Entry 发生冲突（index相同，但是 Term 不同）
+//当检测发生冲突时，会返回冲突记录的索引值
+//当没有发生冲突时，会返回0
 func (l *raftLog) findConflict(ents []pb.Entry) uint64 {
 	for _, ne := range ents {
 		if !l.matchTerm(ne.Index, ne.Term) {
@@ -262,6 +260,9 @@ func (l *raftLog) lastTerm() uint64 {
 	return t
 }
 
+//根据 index 获取指定索引下的Entry记录下的 Term 值
+//首先尝试从 unstable 获取对应的 Entry 记录并返回其 Term 值
+//再从 storage 获取对应的 Entry 记录并返回其 Term 值
 func (l *raftLog) term(i uint64) (uint64, error) {
 	// the valid term range is [index of dummy entry, last index]
 	dummyIndex := l.firstIndex() - 1
@@ -314,6 +315,8 @@ func (l *raftLog) isUpToDate(lasti, term uint64) bool {
 	return term > l.lastTerm() || (term == l.lastTerm() && lasti >= l.lastIndex())
 }
 
+//查询指定的index索引下对应的 Entry 记录的 Term 值
+//再判断是否与term相等
 func (l *raftLog) matchTerm(i, term uint64) bool {
 	t, err := l.term(i)
 	if err != nil {
