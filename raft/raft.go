@@ -238,6 +238,7 @@ type raft struct {
 	//
 	maxUncommittedSize uint64
 	//Leader 节点会记录集群中其他节点的日志复制情况(Nextlndex和Matchlndex）
+	//使用 map 存储，k为每个节点的id
 	prs tracker.ProgressTracker
 
 	//当前节点在集群中的角色，可选值分为StateFollower、StateCandidate、 StateLeader和StatePreCandidat巳四种状态。

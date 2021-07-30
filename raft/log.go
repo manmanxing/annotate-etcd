@@ -92,8 +92,8 @@ func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry
 		//检查冲突，根据返回的 ci 判断是否冲突
 		ci := l.findConflict(ents)
 		switch {
-		case ci == 0://没有冲突
-		case ci <= l.committed://发生冲突，且冲突的位置是已提交的记录，则输出日志，终止程序
+		case ci == 0: //没有冲突
+		case ci <= l.committed: //发生冲突，且冲突的位置是已提交的记录，则输出日志，终止程序
 			l.logger.Panicf("entry %d conflict with committed entry [committed(%d)]", ci, l.committed)
 		default:
 			//发生冲突，且冲突的位置是未提交的记录，则将 ents 中未发生冲突的部分 追加到 unstable 里
@@ -172,12 +172,11 @@ func (l *raftLog) unstableEntries() []pb.Entry {
 	return l.unstable.entries
 }
 
-// nextEnts returns all the available entries for execution.
-// If applied is smaller than the index of snapshot, it returns all committed
-// entries after the index of snapshot.
+//将己提交且未应用的 Entry 的记录返回给上层模块处理
 func (l *raftLog) nextEnts() (ents []pb.Entry) {
-	off := max(l.applied+1, l.firstIndex())
-	if l.committed+1 > off {
+	off := max(l.applied+1, l.firstIndex()) //获取当前已经反用记录的位置
+	if l.committed+1 > off {                //是否存在 已提交且未应用的 Entry 记录
+		//获取全部 已提交且未应用的 Entry 记录并返回
 		ents, err := l.slice(off, l.committed+1, l.maxNextEntsSize)
 		if err != nil {
 			l.logger.Panicf("unexpected error when getting unapplied entries (%v)", err)
@@ -187,11 +186,10 @@ func (l *raftLog) nextEnts() (ents []pb.Entry) {
 	return nil
 }
 
-// hasNextEnts returns if there is any available entries for execution. This
-// is a fast check without heavy raftLog.slice() in raftLog.nextEnts().
+//判断是否有任何可用的执行条目
 func (l *raftLog) hasNextEnts() bool {
-	off := max(l.applied+1, l.firstIndex())
-	return l.committed+1 > off
+	off := max(l.applied+1, l.firstIndex()) //／获取当前 已经应用 记录的位置
+	return l.committed+1 > off              //是否存在己提交且未应用的 Entry 记录
 }
 
 // hasPendingSnapshot returns if there is pending snapshot waiting for applying.
@@ -206,6 +204,8 @@ func (l *raftLog) snapshot() (pb.Snapshot, error) {
 	return l.storage.Snapshot()
 }
 
+//返回 raftLog 第一条 Entry 记录的索引值
+//都是先从 unstable.maybeFirstIndex 查找，如果没查找到，就从 storage.FirstIndex 查找
 func (l *raftLog) firstIndex() uint64 {
 	if i, ok := l.unstable.maybeFirstIndex(); ok {
 		return i
@@ -217,6 +217,8 @@ func (l *raftLog) firstIndex() uint64 {
 	return index
 }
 
+//raftLog 最后一条 Entry 记录的索引值
+//都是先从 unstable.maybeFirstIndex 查找，如果没查找到，就从 storage.FirstIndex 查找
 func (l *raftLog) lastIndex() uint64 {
 	if i, ok := l.unstable.maybeLastIndex(); ok {
 		return i
@@ -285,6 +287,8 @@ func (l *raftLog) term(i uint64) (uint64, error) {
 	panic(err) // TODO(bdarnell)
 }
 
+//在 Leader 向 follower 节点发送 MsgApp 消息时，需要根据 follower 节点的日志复制（NextIndex，MatchIndex）情况来决定发送
+//entries 函数就是通过 i 和 maxsize 获取指定的 entry 记录
 func (l *raftLog) entries(i, maxsize uint64) ([]pb.Entry, error) {
 	if i > l.lastIndex() {
 		return nil, nil
@@ -292,7 +296,7 @@ func (l *raftLog) entries(i, maxsize uint64) ([]pb.Entry, error) {
 	return l.slice(i, l.lastIndex()+1, maxsize)
 }
 
-// allEntries returns all entries in the log.
+// allEntries 返回日志中的所有条目。
 func (l *raftLog) allEntries() []pb.Entry {
 	ents, err := l.entries(l.firstIndex(), noLimit)
 	if err == nil {
